@@ -1,0 +1,21 @@
+# Build artifacts
+.zig-cache/
+zig-out/
+*.o
+*.obj
+*.lib
+*.a
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Editor/IDE specific files (examples, adjust as needed)
+.vscode/
+.idea/
+*.swp
+*~
+
+# Operating System specific files
+.DS_Store
+Thumbs.db
