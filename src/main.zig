@@ -1,11 +1,17 @@
 const std = @import("std");
 const zig_3d_game = @import("zig_3d_game");
 const rl = @import("raylib");
+const physics = @import("physics/mod.zig");
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
     try zig_3d_game.bufferedPrint();
+
+    // Allocator setup
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
     rl.initWindow(800, 600, "My Zig Game");
     defer rl.closeWindow();
@@ -22,6 +28,10 @@ pub fn main() !void {
         .projection = .perspective, // Normal 3D view
     };
 
+    // Physics setup
+    var world = try physics.PhysicsWorld.create(allocator);
+    defer world.destroy();
+
     // Config - Keys
     // Prevent ESC from closing the game immediately (so we can use it to toggle mouse)
     rl.setExitKey(.null);
@@ -32,6 +42,8 @@ pub fn main() !void {
     // === RENDER LOOP ===============================================================
     while (!rl.windowShouldClose()) {
         // === Update Phase (Calculate physics, move camera, read inputs) ============
+        const delta_time = rl.getFrameTime();
+        try world.update(delta_time);
 
         // If we click inside the window, capture the mouse
         if (rl.isMouseButtonPressed(.left)) {

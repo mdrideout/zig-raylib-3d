@@ -85,7 +85,7 @@ pub fn build(b: *std.Build) void {
 
     // === DEPENDENCIES =============================================================
 
-    // Raylib Zig
+    // === Raylib Zig ==========================================================
     const raylib_dep = b.dependency("raylib_zig", .{
         .target = target,
         .optimize = optimize,
@@ -101,6 +101,13 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("raygui", raygui);
     exe.linkLibrary(raylib_artifact);
 
+    // === Jolt Physics via zphysics ===========================================
+    const zphysics = b.dependency("zphysics", .{
+        .use_double_precision = false,
+        .enable_cross_platform_determinism = true,
+    });
+    exe.root_module.addImport("zphysics", zphysics.module("root"));
+    exe.linkLibrary(zphysics.artifact("joltc"));
 
     // =============================================================================
 
