@@ -18,16 +18,20 @@ const Scene = @import("mod.zig").Scene;
 const ground_def = @import("../entities/ground.zig");
 const cube_def = @import("../entities/cube.zig");
 const lights = @import("../lighting/mod.zig");
+const characters = @import("../characters/mod.zig");
 
 /// Renderer holds GPU resources (meshes, materials, shaders) that persist across frames.
 pub const Renderer = struct {
     // Meshes (vertex data on GPU)
     cube_mesh: rl.Mesh,
     ground_mesh: rl.Mesh,
+    capsule_mesh: rl.Mesh,
 
     // Materials (shader + textures + colors)
     cube_material: rl.Material,
     ground_material: rl.Material,
+    player_material: rl.Material,
+    npc_material: rl.Material,
 
     // Shader (shared by all lit materials)
     shader: rl.Shader,
@@ -55,11 +59,28 @@ pub const Renderer = struct {
         ground_material.shader = shader; // Use lighting shader!
         ground_material.maps[@intFromEnum(rl.MaterialMapIndex.albedo)].color = rl.Color.init(80, 80, 80, 255);
 
+        // === Create capsule mesh and materials for characters ===
+        // Use cylinder as placeholder (raylib-zig doesn't have genMeshCapsule)
+        // Total height = 2 * half_height + 2 * radius = 2 * 0.6 + 2 * 0.3 = 1.8m
+        const capsule_height = 2 * characters.CAPSULE_HALF_HEIGHT + 2 * characters.CAPSULE_RADIUS;
+        const capsule_mesh = rl.genMeshCylinder(characters.CAPSULE_RADIUS, capsule_height, 16);
+
+        var player_material = try rl.loadMaterialDefault();
+        player_material.shader = shader;
+        player_material.maps[@intFromEnum(rl.MaterialMapIndex.albedo)].color = rl.Color.init(50, 200, 50, 255); // Green
+
+        var npc_material = try rl.loadMaterialDefault();
+        npc_material.shader = shader;
+        npc_material.maps[@intFromEnum(rl.MaterialMapIndex.albedo)].color = rl.Color.init(50, 100, 200, 255); // Blue
+
         return .{
             .cube_mesh = cube_mesh,
             .ground_mesh = ground_mesh,
+            .capsule_mesh = capsule_mesh,
             .cube_material = cube_material,
             .ground_material = ground_material,
+            .player_material = player_material,
+            .npc_material = npc_material,
             .shader = shader,
         };
     }
@@ -72,14 +93,19 @@ pub const Renderer = struct {
     /// Clean up GPU resources.
     pub fn deinit(self: *Renderer) void {
         // Clear shader references from materials before unloading
-        // (prevents double-free since both materials share the same shader)
+        // (prevents double-free since all materials share the same shader)
         self.cube_material.shader = rl.Shader{ .id = 0, .locs = null };
         self.ground_material.shader = rl.Shader{ .id = 0, .locs = null };
+        self.player_material.shader = rl.Shader{ .id = 0, .locs = null };
+        self.npc_material.shader = rl.Shader{ .id = 0, .locs = null };
 
         rl.unloadMaterial(self.cube_material);
         rl.unloadMaterial(self.ground_material);
+        rl.unloadMaterial(self.player_material);
+        rl.unloadMaterial(self.npc_material);
         rl.unloadMesh(self.cube_mesh);
         rl.unloadMesh(self.ground_mesh);
+        rl.unloadMesh(self.capsule_mesh);
         rl.unloadShader(self.shader);
     }
 
@@ -94,6 +120,7 @@ pub const Renderer = struct {
     pub fn draw(self: *Renderer, scene: *Scene, lighting: *const lights.Lights) void {
         self.drawGround();
         self.drawCubes(scene);
+        self.drawCharacters(scene);
         drawLightDebug(lighting);
     }
 
@@ -131,5 +158,21 @@ pub const Renderer = struct {
         const pos = ground_def.POSITION;
         const transform = rl.Matrix.translate(pos[0], pos[1], pos[2]);
         rl.drawMesh(self.ground_mesh, self.ground_material, transform);
+    }
+
+    /// Draw all characters (player and NPCs) as capsules.
+    fn drawCharacters(self: *Renderer, scene: *Scene) void {
+        const render_data = scene.characters.getRenderData();
+
+        for (render_data.positions, render_data.rotations, render_data.types) |pos, rot, char_type| {
+            // Build transform matrix: translation * rotation
+            const translation = rl.Matrix.translate(pos[0], pos[1], pos[2]);
+            const rotation = rl.Quaternion.init(rot[0], rot[1], rot[2], rot[3]).toMatrix();
+            const transform = rotation.multiply(translation);
+
+            // Use different material based on character type
+            const material = if (char_type == .player) self.player_material else self.npc_material;
+            rl.drawMesh(self.capsule_mesh, material, transform);
+        }
     }
 };

@@ -5,6 +5,14 @@ const physics = @import("physics/mod.zig");
 const Scene = @import("scene/mod.zig").Scene;
 const Renderer = @import("scene/renderer.zig").Renderer;
 const lighting = @import("lighting/mod.zig");
+const characters = @import("characters/mod.zig");
+
+/// Game modes - determines how input is handled
+const GameState = enum {
+    menu, // Show mode selection, mouse free
+    free_camera, // Original behavior - WASD moves camera
+    player_control, // WASD moves player, camera follows
+};
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
@@ -71,13 +79,63 @@ pub fn main() !void {
     // Prevent ESC from closing the game immediately (so we can use it to toggle mouse)
     rl.setExitKey(.null);
 
-    // Vars
-    var mouse_captured: bool = false;
+    // Game state - start in menu
+    var game_state: GameState = .menu;
+    var entities_spawned: bool = false;
 
     // === RENDER LOOP ===============================================================
     while (!rl.windowShouldClose()) {
         // === Update Phase (Calculate physics, move camera, read inputs) ============
         const delta_time = rl.getFrameTime();
+
+        // === State-based Input Handling ===
+        switch (game_state) {
+            .menu => {
+                // Menu input - select mode with keyboard 1 or 2
+                if (rl.isKeyPressed(.one)) {
+                    if (!entities_spawned) {
+                        try scene.spawnEntities();
+                        entities_spawned = true;
+                    }
+                    game_state = .free_camera;
+                    rl.disableCursor();
+                }
+                if (rl.isKeyPressed(.two)) {
+                    if (!entities_spawned) {
+                        try scene.spawnEntities();
+                        entities_spawned = true;
+                    }
+                    game_state = .player_control;
+                    rl.disableCursor();
+                }
+            },
+            .free_camera => {
+                // ESC returns to menu
+                if (rl.isKeyPressed(.escape)) {
+                    game_state = .menu;
+                    rl.enableCursor();
+                } else {
+                    // Original free camera behavior
+                    rl.updateCamera(&camera, .free);
+                }
+            },
+            .player_control => {
+                // ESC returns to menu
+                if (rl.isKeyPressed(.escape)) {
+                    game_state = .menu;
+                    rl.enableCursor();
+                } else {
+                    // Player movement + camera follows player
+                    const input_dir = characters.movement.getInputDirection(camera);
+                    characters.controller.updatePlayer(&scene.characters, input_dir, delta_time);
+
+                    // Update camera to follow player
+                    updateCameraFollowPlayer(&camera, &scene.characters);
+                }
+            },
+        }
+
+        // Step physics simulation
         try physics_world.update(delta_time);
 
         // Sync entity positions from physics simulation
@@ -86,23 +144,6 @@ pub fn main() !void {
         // Update orbiting light animation
         if (orbiting_light) |*orbit| {
             orbit.update(&lights, delta_time);
-        }
-
-        // If we click inside the window, capture the mouse
-        if (rl.isMouseButtonPressed(.left)) {
-            rl.disableCursor();
-            mouse_captured = true;
-        }
-
-        // If we press ESC, release the mouse
-        if (rl.isKeyPressed(.escape)) {
-            rl.enableCursor();
-            mouse_captured = false;
-        }
-
-        // Update Camera ONLY if the mouse is captured
-        if (mouse_captured) {
-            rl.updateCamera(&camera, .free);
         }
 
         // === Begin Drawing =========================================================
@@ -116,14 +157,56 @@ pub fn main() !void {
         // Send camera position and light data to shader
         game_renderer.prepareLighting(&lights, camera);
 
-        // === Draw 3D Things =======================================================
+        // === Draw 3D Things (always render scene) =================================
         rl.beginMode3D(camera);
         game_renderer.draw(&scene, &lights);
         rl.endMode3D();
 
         // === Draw 2D Things =======================================================
         rl.drawFPS(10, 10);
-        rl.drawText(if (mouse_captured) "Mouse: CAPTURED" else "Mouse: FREE", 10, 30, 20, rl.Color.white);
+
+        // Draw menu overlay or mode indicator
+        switch (game_state) {
+            .menu => drawMenu(),
+            .free_camera => rl.drawText("Mode: FREE CAMERA (ESC for menu)", 10, 30, 20, rl.Color.white),
+            .player_control => rl.drawText("Mode: PLAYER CONTROL (ESC for menu)", 10, 30, 20, rl.Color.white),
+        }
+    }
+}
+
+/// Draw the mode selection menu with semi-transparent overlay.
+fn drawMenu() void {
+    const screen_width = rl.getScreenWidth();
+    const screen_height = rl.getScreenHeight();
+
+    // Semi-transparent overlay over 3D scene
+    rl.drawRectangle(0, 0, screen_width, screen_height, rl.Color.init(0, 0, 0, 180));
+
+    // Title
+    const title = "SELECT MODE";
+    const title_width = rl.measureText(title, 40);
+    rl.drawText(title, @divFloor(screen_width - title_width, 2), 150, 40, rl.Color.white);
+
+    // Options - clarify these are keyboard keys
+    rl.drawText("Press 1: Free Camera - Fly around freely", 100, 250, 24, rl.Color.green);
+    rl.drawText("Press 2: Player Control - Move the character", 100, 290, 24, rl.Color.green);
+
+    // Instructions
+    rl.drawText("Press ESC anytime to return to this menu", 100, 400, 18, rl.Color.gray);
+}
+
+/// Update camera to follow the player character (third-person view).
+fn updateCameraFollowPlayer(camera: *rl.Camera3D, chars: *characters.Characters) void {
+    if (chars.getPlayerIndex()) |player_idx| {
+        const player_pos = chars.data.items(.position)[player_idx];
+
+        // Camera offset: behind and above the player
+        camera.target = rl.Vector3.init(player_pos[0], player_pos[1] + 1, player_pos[2]);
+        camera.position = rl.Vector3.init(
+            player_pos[0],
+            player_pos[1] + 5,
+            player_pos[2] + 10,
+        );
     }
 }
 

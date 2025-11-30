@@ -27,14 +27,12 @@ pub const Cubes = struct {
     data: std.MultiArrayList(CubeData),
     allocator: std.mem.Allocator,
     physics_system: *zphy.PhysicsSystem,
-    rng: std.Random,
 
-    pub fn init(allocator: std.mem.Allocator, physics_system: *zphy.PhysicsSystem, rng: std.Random) Cubes {
+    pub fn init(allocator: std.mem.Allocator, physics_system: *zphy.PhysicsSystem) Cubes {
         return .{
             .data = .empty,
             .allocator = allocator,
             .physics_system = physics_system,
-            .rng = rng,
         };
     }
 
@@ -63,7 +61,9 @@ pub const Cubes = struct {
 
     /// Spawn a cube with a random rotation.
     pub fn spawnRandom(self: *Cubes, position: [3]f32) !void {
-        const rotation = math.randomRotation(self.rng);
+        // Create fresh PRNG using timestamp - fine for random rotations
+        var prng = std.Random.DefaultPrng.init(@bitCast(std.time.timestamp()));
+        const rotation = math.randomRotation(prng.random());
         try self.spawn(position, rotation);
     }
 
