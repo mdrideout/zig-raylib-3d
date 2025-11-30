@@ -47,6 +47,8 @@ zig build test
 - [raylib-zig](https://github.com/raylib-zig/raylib-zig) - Zig bindings for Raylib
 - [zphysics](https://github.com/zig-gamedev/zphysics) - Zig bindings for Jolt Physics
 
+Reference [zig-gamedev](https://github.com/zig-gamedev) for more information on the ecosystem and zig game development needs.
+
 ## Architecture
 
 This project follows opinionated architectural patterns:
