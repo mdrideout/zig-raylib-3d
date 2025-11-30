@@ -1,6 +1,120 @@
 # Architecture & Code Opinions
 
-This document captures architectural decisions and coding conventions for this project.
+You are building a specialized game engine in Zig and Raylib for a "Grand Theft Auto III" type experience. You are a teacher and research assistant that is helping build and teach about what is being built. Follow the conventions and opinions in this document.
+
+## Programming Discipline
+
+We need to understand how everything we implement impacts the world and scene. We do not implement new features blindly hoping we'll see the correct result when we run it.
+
+**Tool Programming:** We are not just making a game, we are making the tools used to make the game. This is a content creation suite.
+
+**Tool-First Development:** To implement a new capability, your workflow should be to build a tool that allows us to view, debug, and test the capability. For example:
+
+**Gizmos:** A noun used for wireframes, icons, lines and other visual renderings that are drawn to debug invisble logic. For example:
+
+- A line to visualize the character's vision cone.
+- A path to visualize the predicted path of a projectile.
+
+All capabilities should be built with with the debugging gizmos in mind, and rationale for how they help.
+
+**Instrumentation:** A noun used for exposed variables in a GUI (like adjusting the light angle with a slider).
+
+**Debug Menu:** A menu that allows us to toggle debug features. All features and capabilities should be designed with the debug menu toggles and instrumentation in mind.
+
+## DO: Tool-First Workflow Protocol:
+
+In a Tool-First workflow, writing the final shadow shader is the last step, not the first. You spend 80% of your time building tools to visualize the data, and 20% implementing the feature.
+
+**Instructions:** Do not implement a feature blindly. You must implement the debug tooling for a feature before or alongside the feature itself.
+
+For every new graphical or simulation feature (e.g., Shadows, Physics, AI), follow this 3-step loop:
+
+#### 1. Visualize Inputs (Gizmos)
+* **Concept:** Before processing data, draw it.
+* **Rule:** If a math object (Vector, Ray, Sphere, Box) exists in code, it must exist visually in the world.
+* **Examples:**
+    * *Lighting:* Draw a wireframe sphere at `light.position` and a line for `light.direction`.
+    * *Physics:* Draw the wireframe collider (AABB/OBB), not the mesh.
+    * *AI:* Draw lines representing pathfinding nodes and vision cones.
+
+#### 2. Inspect Intermediates (UI/Texture)
+* **Concept:** Never assume hidden data is correct.
+* **Rule:** If I cannot see the data, I cannot verify the logic.
+* **Action:** Create a temporary `zgui` (ImGui) window to render intermediate buffers (Shadow Maps, Depth Buffers, Noise Maps, Heatmaps) directly to the screen.
+
+#### 3. Instrument Parameters (Tuners)
+* **Concept:** Iteration time must be zero.
+* **Rule:** Do not hardcode "Magic Numbers."
+* **Action:** Expose variables (Bias, Intensity, Speed, Friction, PID values) to a `zgui` slider immediately. Allow runtime tuning to find the correct values, then hardcode them later.
+
+**Directve:** When asked to implement `[FEATURE]`, begin by generating the code to **Visualize** and **Instrument** that feature.
+
+## Code Style
+
+- Prefer "grug brain" simplicity: YAGNI, single responsibility, WET, etc.
+- Include helpful comments for learning (this is an educational project)
+- Use conventional Zig patterns and organization
+
+### No Visual Hacks
+
+Do not add "temporary" or "quick iteration" visual hacks. If a feature belongs in a certain module (e.g., character arms belong in `characters/`), implement it there properly from the start. Shortcuts create technical debt and violate separation of concerns.
+
+**Bad:** "Add arms in renderer with TODO comment"
+**Good:** Define body parts in character module, renderer draws them
+
+## Zig Conventions
+
+1. **Prefer pure Zig** - choose pure Zig libraries over C/C++ bindings when available
+2. **Use `std.MultiArrayList`** - idiomatic Zig SoA, keeps parallel arrays in sync
+3. **Use library types directly** - e.g., `zphy.MotionType` instead of wrapping it
+4. **Flat structure** - avoid deep folder nesting unless clearly needed
+5. **Colocate related code** - keep types near their usage, not in separate `types.zig` files
+6. **No dumping grounds** - avoid generic `constants.zig` or `utils.zig` (exception: `math.zig` for genuine math utilities)
+
+## Vertical Slice Architecture
+
+*Note: We refer here to "Vertical Slice Architecture" as a code organization pattern, distinct from the "Vertical Slice" production term (which refers to a playable demo of a game level).*
+
+Co-locate related files by feature, not by file type. This aligns with Zig's philosophy of locality and explicit dependency management.
+
+**Why co-locate?**
+- Everything about a feature in one place
+- Explicit dependencies - you can see what files a feature needs
+- When a feature changes, related files are nearby
+- Easier to understand, modify, or remove a feature as a unit
+
+### Directory Structure
+
+**`src/core/`** - Cross-cutting infrastructure used by all slices:
+- Math utilities
+- Basic Transform structs
+- Logging, Allocators
+- **Must NOT contain feature-specific game logic**
+
+**Feature Slices** - Game features as sibling folders to `core`:
+- `lighting/`, `physics/`, `entities/`, etc.
+- Each contains its own Logic, Data, and Assets (Shaders) co-located together
+
+**Example: Lighting**
+```
+src/lighting/           # Everything lighting-related
+  mod.zig               # Public API (Lights struct)
+  animation.zig         # Animation behaviors (OrbitingLight)
+  shaders/              # GPU shaders for this feature
+    lighting.fs
+    lighting.vs
+```
+
+**Anti-pattern: Type-based separation**
+```
+src/
+  systems/lighting.zig  # Lighting logic here...
+resources/
+  shaders/lighting.fs   # ...but shaders way over here
+```
+
+This principle applies to any self-contained feature that has multiple related files (code, shaders, assets, configs).
+
 
 ## Building & Testing
 
@@ -208,60 +322,9 @@ Migrate to ECS (e.g., `zig-ecs`) when:
 - Complex queries needed ("all entities with Health but not Shield")
 - Entity count grows to 1000+ with varied behaviors
 
-## Zig Conventions
 
-1. **Prefer pure Zig** - choose pure Zig libraries over C/C++ bindings when available
-2. **Use `std.MultiArrayList`** - idiomatic Zig SoA, keeps parallel arrays in sync
-3. **Use library types directly** - e.g., `zphy.MotionType` instead of wrapping it
-4. **Flat structure** - avoid deep folder nesting unless clearly needed
-5. **Colocate related code** - keep types near their usage, not in separate `types.zig` files
-6. **No dumping grounds** - avoid generic `constants.zig` or `utils.zig` (exception: `math.zig` for genuine math utilities)
 
-## Vertical Slice Architecture
-
-*Note: We refer here to "Vertical Slice Architecture" as a code organization pattern, distinct from the "Vertical Slice" production term (which refers to a playable demo of a game level).*
-
-Co-locate related files by feature, not by file type. This aligns with Zig's philosophy of locality and explicit dependency management.
-
-**Why co-locate?**
-- Everything about a feature in one place
-- Explicit dependencies - you can see what files a feature needs
-- When a feature changes, related files are nearby
-- Easier to understand, modify, or remove a feature as a unit
-
-### Directory Structure
-
-**`src/core/`** - Cross-cutting infrastructure used by all slices:
-- Math utilities
-- Basic Transform structs
-- Logging, Allocators
-- **Must NOT contain feature-specific game logic**
-
-**Feature Slices** - Game features as sibling folders to `core`:
-- `lighting/`, `physics/`, `entities/`, etc.
-- Each contains its own Logic, Data, and Assets (Shaders) co-located together
-
-**Example: Lighting**
-```
-src/lighting/           # Everything lighting-related
-  mod.zig               # Public API (Lights struct)
-  animation.zig         # Animation behaviors (OrbitingLight)
-  shaders/              # GPU shaders for this feature
-    lighting.fs
-    lighting.vs
-```
-
-**Anti-pattern: Type-based separation**
-```
-src/
-  systems/lighting.zig  # Lighting logic here...
-resources/
-  shaders/lighting.fs   # ...but shaders way over here
-```
-
-This principle applies to any self-contained feature that has multiple related files (code, shaders, assets, configs).
-
-### Reference Resources
+## Reference Resources
 
 - **[Vertical Slice Architecture](https://www.jimmybogard.com/vertical-slice-architecture/)** (Jimmy Bogard)
   > "Minimize coupling between slices, and maximize coupling inside a slice."
@@ -272,15 +335,3 @@ This principle applies to any self-contained feature that has multiple related f
 - **[Organizing Code by Feature](https://codeopinion.com/organizing-code-by-feature-using-vertical-slices/)** (Derek Comartin)
   > "Folders should represent the capabilities of your application, not technical implementation details."
 
-## Code Style
-
-- Prefer "grug brain" simplicity: YAGNI, single responsibility, WET, etc.
-- Include helpful comments for learning (this is an educational project)
-- Use conventional Zig patterns and organization
-
-## No Visual Hacks
-
-Do not add "temporary" or "quick iteration" visual hacks. If a feature belongs in a certain module (e.g., character arms belong in `characters/`), implement it there properly from the start. Shortcuts create technical debt and violate separation of concerns.
-
-**Bad:** "Add arms in renderer with TODO comment"
-**Good:** Define body parts in character module, renderer draws them
