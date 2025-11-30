@@ -31,6 +31,7 @@ Ensure you check what we get for free in these libraries, especially raylib, bef
 - Use conventional Zig styles and organization
 - Lean towards "grug brain" opinions like single responsibility, WET, etc. But don't compromise learning about game development practices and architectures to satisfy grug. 
 - This is a teaching project, so include code comments and explanations that are helpful to a beginner
+- Lean into what would be done for a production game, not a "quick win" or a hack
 
 ## Teaching Instincts
 
