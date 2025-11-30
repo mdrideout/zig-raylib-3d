@@ -14,6 +14,8 @@ A 3D game built with Zig and Raylib. This repo demonstrates:
 ## Requirements
 
 - Zig 0.15.2 or later
+- [Install zig](https://ziglang.org/learn/getting-started/#managers)
+- [MacOS Zig Homebrew](https://formulae.brew.sh/formula/zig)
 
 ## Building
 
@@ -36,11 +38,6 @@ zig build run
 - **E/Q** - Move up/down
 - **Mouse** - Look around
 
-## Testing
-
-```bash
-zig build test
-```
 
 ## Dependencies
 
