@@ -39,14 +39,60 @@ pub fn updateCharacter(
 pub fn updatePlayer(
     characters: *character.Characters,
     input_dir: [3]f32,
+    camera_yaw: f32,
     delta_time: f32,
 ) void {
     if (characters.getPlayerIndex()) |player_idx| {
-        updateCharacter(characters, player_idx, input_dir, delta_time, movement.default_config);
+        updateCharacterWithCameraYaw(characters, player_idx, input_dir, camera_yaw, delta_time, movement.default_config);
     }
 }
 
+/// Update a character with camera-locked rotation (player always faces camera direction).
+/// Used for strafe-style movement where A/D strafe and player faces camera.
+fn updateCharacterWithCameraYaw(
+    characters: *character.Characters,
+    index: usize,
+    input_dir: [3]f32,
+    camera_yaw: f32,
+    delta_time: f32,
+    config: movement.MovementConfig,
+) void {
+    const body_id = characters.getBodyId(index);
+    const body_interface = characters.physics_system.getBodyInterfaceMut();
+
+    // Apply movement velocity
+    movement.applyMovement(body_interface, body_id, input_dir, config, delta_time);
+
+    // Set rotation to match camera yaw (player always faces where camera points)
+    setRotationFromCameraYaw(characters, index, camera_yaw);
+
+    // Update grounded state
+    const grounded = checkGrounded(characters.physics_system, body_id);
+    characters.setGrounded(index, grounded);
+
+    // Lock rotation on physics body (prevent tipping over)
+    lockPhysicsRotation(body_interface, body_id);
+}
+
+/// Set character rotation to face camera direction.
+fn setRotationFromCameraYaw(
+    characters: *character.Characters,
+    index: usize,
+    camera_yaw: f32,
+) void {
+    // Convert camera yaw to quaternion (rotation around Y axis)
+    // Camera is positioned at +yaw offset.
+    // Yaw=0 -> Camera at +Z looking -Z. Player should face -Z (Angle PI).
+    // Yaw=90 -> Camera at +X looking -X. Player should face -X (Angle 3PI/2 or -PI/2).
+    // Formula: Angle = Yaw + PI
+    const angle = camera_yaw + std.math.pi;
+    const half_angle = angle / 2.0;
+    const rotation = [4]f32{ 0, @sin(half_angle), 0, @cos(half_angle) };
+    characters.setRotation(index, rotation);
+}
+
 /// Smoothly rotate character to face movement direction.
+/// Used for NPCs or alternative control schemes.
 fn updateFacingRotation(
     characters: *character.Characters,
     index: usize,

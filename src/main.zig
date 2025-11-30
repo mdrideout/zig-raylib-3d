@@ -6,6 +6,7 @@ const Scene = @import("scene/mod.zig").Scene;
 const Renderer = @import("scene/renderer.zig").Renderer;
 const lighting = @import("lighting/mod.zig");
 const characters = @import("characters/mod.zig");
+const camera_mod = @import("camera/mod.zig");
 
 /// Game modes - determines how input is handled
 const GameState = enum {
@@ -30,14 +31,8 @@ pub fn main() !void {
     // Lock the game to 60 frames per second so it doesn't melt your CPU
     rl.setTargetFPS(60);
 
-    // Define the camera
-    var camera = rl.Camera3D{
-        .position = rl.Vector3.init(0, 10, 10),
-        .target = rl.Vector3.init(0, 0, 0), // Looking at the center
-        .up = rl.Vector3.init(0, 1, 0), // Y is up
-        .fovy = 45.0, // Field of view (how wide the lens is)
-        .projection = .perspective, // Normal 3D view
-    };
+    // Camera setup - uses camera module for mode switching
+    var camera = camera_mod.Camera.init();
 
     // Physics setup
     var physics_world = try physics.PhysicsWorld.create(allocator);
@@ -115,8 +110,9 @@ pub fn main() !void {
                     game_state = .menu;
                     rl.enableCursor();
                 } else {
-                    // Original free camera behavior
-                    rl.updateCamera(&camera, .free);
+                    // Free camera mode - use raylib's built-in free camera
+                    camera.mode = .free;
+                    camera.update(null);
                 }
             },
             .player_control => {
@@ -125,12 +121,20 @@ pub fn main() !void {
                     game_state = .menu;
                     rl.enableCursor();
                 } else {
-                    // Player movement + camera follows player
-                    const input_dir = characters.movement.getInputDirection(camera);
-                    characters.controller.updatePlayer(&scene.characters, input_dir, delta_time);
+                    // Orbit camera mode - mouse controls camera orbit
+                    camera.mode = .orbit;
 
-                    // Update camera to follow player
-                    updateCameraFollowPlayer(&camera, &scene.characters);
+                    // Get player position for camera target
+                    const player_pos: ?[3]f32 = if (scene.characters.getPlayerIndex()) |idx|
+                        scene.characters.data.items(.position)[idx]
+                    else
+                        null;
+
+                    camera.update(player_pos);
+
+                    // Camera-relative movement using yaw angle
+                    const input_dir = characters.movement.getInputDirectionFromYaw(camera.getYaw());
+                    characters.controller.updatePlayer(&scene.characters, input_dir, camera.getYaw(), delta_time);
                 }
             },
         }
@@ -155,10 +159,10 @@ pub fn main() !void {
 
         // === Prepare Lighting for GPU ==============================================
         // Send camera position and light data to shader
-        game_renderer.prepareLighting(&lights, camera);
+        game_renderer.prepareLighting(&lights, camera.rl_camera);
 
         // === Draw 3D Things (always render scene) =================================
-        rl.beginMode3D(camera);
+        rl.beginMode3D(camera.rl_camera);
         game_renderer.draw(&scene, &lights);
         rl.endMode3D();
 
@@ -193,21 +197,6 @@ fn drawMenu() void {
 
     // Instructions
     rl.drawText("Press ESC anytime to return to this menu", 100, 400, 18, rl.Color.gray);
-}
-
-/// Update camera to follow the player character (third-person view).
-fn updateCameraFollowPlayer(camera: *rl.Camera3D, chars: *characters.Characters) void {
-    if (chars.getPlayerIndex()) |player_idx| {
-        const player_pos = chars.data.items(.position)[player_idx];
-
-        // Camera offset: behind and above the player
-        camera.target = rl.Vector3.init(player_pos[0], player_pos[1] + 1, player_pos[2]);
-        camera.position = rl.Vector3.init(
-            player_pos[0],
-            player_pos[1] + 5,
-            player_pos[2] + 10,
-        );
-    }
 }
 
 test "simple test" {

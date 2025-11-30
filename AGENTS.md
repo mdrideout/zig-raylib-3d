@@ -42,8 +42,16 @@ This is a Zig + Raylib + Jolt Physics based 3d game. Consider what is convention
 
 ```
 src/
-  main.zig              # Game loop, input, window/camera management
+  main.zig              # Game loop, input, window management
   math.zig              # Math utilities (randomRotation, etc.)
+  camera/
+    mod.zig             # Camera modes (free, orbit), public API
+    orbit.zig           # Orbit camera behavior (third-person)
+  characters/
+    mod.zig             # Characters module public API
+    character.zig       # Character definition, body parts, SoA storage
+    movement.zig        # Input handling, movement physics
+    controller.zig      # Character controller logic
   entities/
     cube.zig            # Cube: definition + SoA storage (Cubes struct)
     ground.zig          # Ground: definition + spawn
@@ -86,6 +94,20 @@ Animation is game logic (how things change), not rendering (how things look).
 This separation keeps the renderer pure and allows multiple animated elements.
 
 **Uses:** entity storage structs, physics for positions, lights for animation
+
+### Renderer vs Entity Separation
+
+**Entities/Characters** define:
+- What something IS (shape, size, body parts)
+- Behavior and state
+- Visual composition (which parts make up the entity)
+
+**Renderer** handles:
+- HOW to draw things (meshes, materials, transforms)
+- GPU resources (shaders, textures)
+- Drawing order and optimization
+
+The renderer draws what entities define. It does not invent visual elements.
 
 ### `physics/` - Low-level physics primitives
 - Physics engine configuration
@@ -255,3 +277,10 @@ This principle applies to any self-contained feature that has multiple related f
 - Prefer "grug brain" simplicity: YAGNI, single responsibility, WET, etc.
 - Include helpful comments for learning (this is an educational project)
 - Use conventional Zig patterns and organization
+
+## No Visual Hacks
+
+Do not add "temporary" or "quick iteration" visual hacks. If a feature belongs in a certain module (e.g., character arms belong in `characters/`), implement it there properly from the start. Shortcuts create technical debt and violate separation of concerns.
+
+**Bad:** "Add arms in renderer with TODO comment"
+**Good:** Define body parts in character module, renderer draws them

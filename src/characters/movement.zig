@@ -18,7 +18,41 @@ pub const MovementConfig = struct {
 /// Default movement configuration.
 pub const default_config = MovementConfig{};
 
-/// Get movement direction from WASD keys relative to camera.
+/// Get movement direction from WASD input, relative to camera yaw angle.
+/// This is simpler than the camera-vector approach and works well with orbit camera.
+/// Returns normalized direction vector (or zero if no input).
+pub fn getInputDirectionFromYaw(camera_yaw: f32) [3]f32 {
+    var dir = [3]f32{ 0, 0, 0 };
+
+    // Raw input (W=forward=-Z, S=back=+Z, A=left=-X, D=right=+X)
+    if (rl.isKeyDown(.w)) dir[2] -= 1;
+    if (rl.isKeyDown(.s)) dir[2] += 1;
+    if (rl.isKeyDown(.a)) dir[0] -= 1;
+    if (rl.isKeyDown(.d)) dir[0] += 1;
+
+    // Check if there's any input
+    const length_sq = dir[0] * dir[0] + dir[2] * dir[2];
+    if (length_sq < 0.0001) {
+        return .{ 0, 0, 0 };
+    }
+
+    // Normalize raw input
+    const length = @sqrt(length_sq);
+    dir[0] /= length;
+    dir[2] /= length;
+
+    // Rotate by NEGATIVE camera yaw (camera looks opposite to its position offset)
+    // cos(-x) = cos(x), so only sin needs negation
+    const sin_yaw = @sin(-camera_yaw);
+    const cos_yaw = @cos(camera_yaw);
+    const rotated_x = dir[0] * cos_yaw - dir[2] * sin_yaw;
+    const rotated_z = dir[0] * sin_yaw + dir[2] * cos_yaw;
+
+    return .{ rotated_x, 0, rotated_z };
+}
+
+/// Get movement direction from WASD keys relative to camera (legacy).
+/// Uses camera vectors - works with free camera mode.
 /// Returns normalized direction vector (or zero if no input).
 pub fn getInputDirection(camera: rl.Camera3D) [3]f32 {
     // Get camera's forward and right vectors (horizontal plane only)

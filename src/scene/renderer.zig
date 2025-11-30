@@ -25,7 +25,7 @@ pub const Renderer = struct {
     // Meshes (vertex data on GPU)
     cube_mesh: rl.Mesh,
     ground_mesh: rl.Mesh,
-    capsule_mesh: rl.Mesh,
+    player_mesh: rl.Mesh,
 
     // Materials (shader + textures + colors)
     cube_material: rl.Material,
@@ -59,11 +59,12 @@ pub const Renderer = struct {
         ground_material.shader = shader; // Use lighting shader!
         ground_material.maps[@intFromEnum(rl.MaterialMapIndex.albedo)].color = rl.Color.init(80, 80, 80, 255);
 
-        // === Create capsule mesh and materials for characters ===
-        // Use cylinder as placeholder (raylib-zig doesn't have genMeshCapsule)
-        // Total height = 2 * half_height + 2 * radius = 2 * 0.6 + 2 * 0.3 = 1.8m
-        const capsule_height = 2 * characters.CAPSULE_HALF_HEIGHT + 2 * characters.CAPSULE_RADIUS;
-        const capsule_mesh = rl.genMeshCylinder(characters.CAPSULE_RADIUS, capsule_height, 16);
+        // === Create player mesh (asymmetric box so rotation is visible) ===
+        const player_mesh = rl.genMeshCube(
+            characters.BODY_WIDTH,
+            characters.BODY_HEIGHT,
+            characters.BODY_DEPTH,
+        );
 
         var player_material = try rl.loadMaterialDefault();
         player_material.shader = shader;
@@ -76,7 +77,7 @@ pub const Renderer = struct {
         return .{
             .cube_mesh = cube_mesh,
             .ground_mesh = ground_mesh,
-            .capsule_mesh = capsule_mesh,
+            .player_mesh = player_mesh,
             .cube_material = cube_material,
             .ground_material = ground_material,
             .player_material = player_material,
@@ -105,7 +106,7 @@ pub const Renderer = struct {
         rl.unloadMaterial(self.npc_material);
         rl.unloadMesh(self.cube_mesh);
         rl.unloadMesh(self.ground_mesh);
-        rl.unloadMesh(self.capsule_mesh);
+        rl.unloadMesh(self.player_mesh);
         rl.unloadShader(self.shader);
     }
 
@@ -160,19 +161,19 @@ pub const Renderer = struct {
         rl.drawMesh(self.ground_mesh, self.ground_material, transform);
     }
 
-    /// Draw all characters (player and NPCs) as capsules.
+    /// Draw all characters as simple boxes.
     fn drawCharacters(self: *Renderer, scene: *Scene) void {
         const render_data = scene.characters.getRenderData();
 
         for (render_data.positions, render_data.rotations, render_data.types) |pos, rot, char_type| {
-            // Build transform matrix: translation * rotation
+            const material = if (char_type == .player) self.player_material else self.npc_material;
+
+            // Build transform: translation * rotation
             const translation = rl.Matrix.translate(pos[0], pos[1], pos[2]);
             const rotation = rl.Quaternion.init(rot[0], rot[1], rot[2], rot[3]).toMatrix();
             const transform = rotation.multiply(translation);
 
-            // Use different material based on character type
-            const material = if (char_type == .player) self.player_material else self.npc_material;
-            rl.drawMesh(self.capsule_mesh, material, transform);
+            rl.drawMesh(self.player_mesh, material, transform);
         }
     }
 };

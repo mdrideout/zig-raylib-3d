@@ -2,19 +2,70 @@
 //!
 //! A character is a humanoid entity with a capsule physics body.
 //! Uses the same SoA pattern as cubes for cache-friendly iteration.
+//!
+//! Body parts (visual composition) are defined here - the renderer draws
+//! what characters define, not the other way around.
 
 const std = @import("std");
 const zphy = @import("zphysics");
 const physics = @import("../physics/mod.zig");
 
-/// Character dimensions (in meters).
+/// Character physics dimensions (in meters).
 pub const CAPSULE_RADIUS: f32 = 0.3;
 pub const CAPSULE_HALF_HEIGHT: f32 = 0.6; // Total height ~1.8m with radius caps
+
+/// Player box dimensions (in meters) - asymmetric so rotation is visible.
+pub const BODY_WIDTH: f32 = 0.6; // X - side to side
+pub const BODY_HEIGHT: f32 = 1.8; // Y - tall
+pub const BODY_DEPTH: f32 = 0.3; // Z - front to back (narrow = shows facing)
 
 /// Types of characters.
 pub const CharacterType = enum {
     player,
     npc,
+};
+
+/// Types of body parts a character can have.
+pub const BodyPartType = enum {
+    body, // Main body (box shape)
+};
+
+/// A visual part of a character (body, arm, etc.)
+/// Defines position and rotation relative to character center.
+pub const BodyPart = struct {
+    part_type: BodyPartType,
+    local_offset: [3]f32, // Position relative to character center
+    local_rotation: [4]f32, // Rotation relative to character (quaternion)
+    scale: [3]f32, // Scale of the part
+};
+
+/// Get the body parts for a character type.
+/// Returns static part definitions - renderer iterates and draws each.
+pub fn getBodyParts(char_type: CharacterType) []const BodyPart {
+    return switch (char_type) {
+        .player => &player_parts,
+        .npc => &npc_parts,
+    };
+}
+
+// Player body - single box shape
+const player_parts = [_]BodyPart{
+    .{
+        .part_type = .body,
+        .local_offset = .{ 0, 0, 0 },
+        .local_rotation = .{ 0, 0, 0, 1 },
+        .scale = .{ 1, 1, 1 },
+    },
+};
+
+// NPC body - single box shape
+const npc_parts = [_]BodyPart{
+    .{
+        .part_type = .body,
+        .local_offset = .{ 0, 0, 0 },
+        .local_rotation = .{ 0, 0, 0, 1 },
+        .scale = .{ 1, 1, 1 },
+    },
 };
 
 /// Data for a single character instance.
