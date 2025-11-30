@@ -2,6 +2,8 @@ const std = @import("std");
 const zig_3d_game = @import("zig_3d_game");
 const rl = @import("raylib");
 const physics = @import("physics/mod.zig");
+const Scene = @import("scene/mod.zig").Scene;
+const Renderer = @import("scene/renderer.zig").Renderer;
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
@@ -29,8 +31,16 @@ pub fn main() !void {
     };
 
     // Physics setup
-    var world = try physics.PhysicsWorld.create(allocator);
-    defer world.destroy();
+    var physics_world = try physics.PhysicsWorld.create(allocator);
+    defer physics_world.destroy();
+
+    // Scene setup - creates ground plane and initial objects
+    var scene = try Scene.init(allocator, &physics_world);
+    defer scene.deinit();
+
+    // Renderer setup - creates meshes and materials for drawing
+    var game_renderer = try Renderer.init();
+    defer game_renderer.deinit();
 
     // Config - Keys
     // Prevent ESC from closing the game immediately (so we can use it to toggle mouse)
@@ -43,7 +53,10 @@ pub fn main() !void {
     while (!rl.windowShouldClose()) {
         // === Update Phase (Calculate physics, move camera, read inputs) ============
         const delta_time = rl.getFrameTime();
-        try world.update(delta_time);
+        try physics_world.update(delta_time);
+
+        // Sync entity positions from physics simulation
+        scene.syncFromPhysics();
 
         // If we click inside the window, capture the mouse
         if (rl.isMouseButtonPressed(.left)) {
@@ -71,7 +84,7 @@ pub fn main() !void {
 
         // === Draw 3D Things =======================================================
         rl.beginMode3D(camera);
-        rl.drawGrid(10, 1.0);
+        game_renderer.draw(&scene);
         rl.endMode3D();
 
         // === Draw 2D Things =======================================================

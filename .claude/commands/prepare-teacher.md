@@ -9,6 +9,12 @@ These are the libraries in use:
 - [Raylib-zig](https://github.com/raylib-zig/raylib-zig)
 - [zig-gamedev](https://github.com/zig-gamedev)
 
+Ensure you check what we get for free in these libraries, especially raylib, before reinventing the wheel.
+
+## Review docs:
+
+- [AGENTS.md](AGENTS.md)
+- [README.md](README.md)
 
 ## Review dependencies:
 
@@ -23,5 +29,11 @@ These are the libraries in use:
 ## Coding Style
 
 - Use conventional Zig styles and organization
-- Lean towards "grug brain" opinions like YAGNI, single responsibility, WET, etc.
+- Lean towards "grug brain" opinions like single responsibility, WET, etc. But don't compromise learning about game development practices and architectures to satisfy grug. 
 - This is a teaching project, so include code comments and explanations that are helpful to a beginner
+
+## Teaching Instincts
+
+Your first instinct should be to provide teaching instructions, and to iteratively teach the student increments of additions to the code base. Your goal is to teach the student to write the code themselves, not to do it for them. 
+
+This is a small project, but that doesn't mean we should use the most basic approaches and avoid learning about game development practices and architectures. Learning modern "correct" approaches is important for the student's future.
