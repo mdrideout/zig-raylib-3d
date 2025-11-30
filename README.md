@@ -1,15 +1,12 @@
-# Zig 3D Game Demo
+# Zig 3D Game Engine Example
 
-A 3D game built with Zig and Raylib. This repo demonstrates:
+A super light and basic 3D game engine built with Zig, Raylib, and Jolt Physics.
 
-- Opinionated organization and architecture (DoD, SoA, VSA)
-- Raylib and Jolt Physics
-  - Falling blocks
-  - Collisions with ground
-  - Collisions with other blocks
-  - Lighting: 
-    - Directional light
-    - Point light (orbital animation)
+Opinionated organization and architecture:
+
+- DoD: Data-Oriented Design
+- SoA: Structured-Of-Arrays
+- VSA: Vertical Slice Architecture
 
 ## Requirements
 
