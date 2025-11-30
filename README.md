@@ -36,6 +36,7 @@ zig build test
 ## Dependencies
 
 - [raylib-zig](https://github.com/raylib-zig/raylib-zig) - Zig bindings for Raylib
+- [zphysics](https://github.com/zig-gamedev/zphysics) - Zig bindings for Jolt Physics
 
 ## Architecture
 
