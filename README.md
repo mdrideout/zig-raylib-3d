@@ -3,7 +3,6 @@
 A 3D game built with Zig and Raylib. This repo demonstrates:
 
 - Opinionated organization and architecture (DoD, SoA, VSA)
-- Zig idioms (explicit control, pure libraries)
 - Raylib and Jolt Physics
   - Falling blocks
   - Collisions with ground
