@@ -20,8 +20,8 @@ zig build run
 
 ## Controls
 
-- **Click** - Capture mouse for camera control
-- **ESC** - Release mouse
+- **Click** - Click the window to capture mouse for camera control
+- **ESC** - Release mouse control
 - **W/S** - Move forward/backward
 - **A/D** - Strafe left/right
 - **E/Q** - Move up/down
@@ -36,3 +36,14 @@ zig build test
 ## Dependencies
 
 - [raylib-zig](https://github.com/raylib-zig/raylib-zig) - Zig bindings for Raylib
+
+## Architecture
+
+This project follows opinionated architectural patterns:
+
+- **Data-Oriented Design** - Entities stored in cache-friendly arrays, explicit data flow
+- **Structure of Arrays (SoA)** - All collections use `std.MultiArrayList` for consistency
+- **Vertical Slice Architecture** - Features co-locate code, shaders, and assets together
+- **Zig-idiomatic** - Explicit control, pure Zig libraries preferred, no hidden state
+
+[AGENTS.md](AGENTS.md) contains more details about the design decisions for vibe coding consistency.

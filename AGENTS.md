@@ -47,9 +47,15 @@ src/
   entities/
     cube.zig            # Cube: definition + SoA storage (Cubes struct)
     ground.zig          # Ground: definition + spawn
+  lighting/
+    mod.zig             # Lights struct (SoA), public API
+    animation.zig       # OrbitingLight animation logic
+    shaders/
+      lighting.fs       # Fragment shader (Phong lighting)
+      lighting.vs       # Vertex shader
   scene/
     mod.zig             # Scene lifecycle, owns entity storage
-    renderer.zig        # Drawing logic (uses Raylib)
+    renderer.zig        # Drawing logic only (no animation state)
   physics/
     mod.zig             # Physics system wrapper (init/update/destroy)
     layers.zig          # Collision layer definitions
@@ -72,11 +78,14 @@ src/
 
 **Keeps the concept contained** - everything about "cube" in one file.
 
-### `scene/` - Orchestration and rendering
-- `mod.zig` - Owns entity storage instances, lifecycle (init/deinit)
-- `renderer.zig` - Draws entities using Raylib
+### `scene/` - Orchestration, animation, and rendering
+- `mod.zig` - Owns entity storage instances, lifecycle (init/deinit), animations
+- `renderer.zig` - Draws entities using Raylib (no animation state!)
 
-**Uses:** entity storage structs, physics for positions
+Animation is game logic (how things change), not rendering (how things look).
+This separation keeps the renderer pure and allows multiple animated elements.
+
+**Uses:** entity storage structs, physics for positions, lights for animation
 
 ### `physics/` - Low-level physics primitives
 - Physics engine configuration
@@ -145,6 +154,31 @@ try self.data.append(allocator, .{
 3. Init/deinit in Scene, call sync in game loop
 4. Add draw function in `renderer.zig`
 
+### Always Use SoA (MultiArrayList)
+
+Use `std.MultiArrayList` for **all** entity/object collections, regardless of size.
+
+**Why consistency > micro-optimization:**
+- One pattern to learn and maintain
+- Boilerplate cost is ~zero with LLM assistance
+- Performance difference for small collections is negligible
+- Natural progression if collection grows
+
+**Pattern:**
+```zig
+const FooData = struct {
+    position: [3]f32,
+    velocity: [3]f32,
+    // ... hot data
+};
+
+pub const Foos = struct {
+    data: std.MultiArrayList(FooData),
+    allocator: std.mem.Allocator,
+    // ... cold data or fixed-size arrays
+};
+```
+
 ### When to Consider ECS
 
 Migrate to ECS (e.g., `zig-ecs`) when:
@@ -160,6 +194,61 @@ Migrate to ECS (e.g., `zig-ecs`) when:
 4. **Flat structure** - avoid deep folder nesting unless clearly needed
 5. **Colocate related code** - keep types near their usage, not in separate `types.zig` files
 6. **No dumping grounds** - avoid generic `constants.zig` or `utils.zig` (exception: `math.zig` for genuine math utilities)
+
+## Vertical Slice Architecture
+
+*Note: We refer here to "Vertical Slice Architecture" as a code organization pattern, distinct from the "Vertical Slice" production term (which refers to a playable demo of a game level).*
+
+Co-locate related files by feature, not by file type. This aligns with Zig's philosophy of locality and explicit dependency management.
+
+**Why co-locate?**
+- Everything about a feature in one place
+- Explicit dependencies - you can see what files a feature needs
+- When a feature changes, related files are nearby
+- Easier to understand, modify, or remove a feature as a unit
+
+### Directory Structure
+
+**`src/core/`** - Cross-cutting infrastructure used by all slices:
+- Math utilities
+- Basic Transform structs
+- Logging, Allocators
+- **Must NOT contain feature-specific game logic**
+
+**Feature Slices** - Game features as sibling folders to `core`:
+- `lighting/`, `physics/`, `entities/`, etc.
+- Each contains its own Logic, Data, and Assets (Shaders) co-located together
+
+**Example: Lighting**
+```
+src/lighting/           # Everything lighting-related
+  mod.zig               # Public API (Lights struct)
+  animation.zig         # Animation behaviors (OrbitingLight)
+  shaders/              # GPU shaders for this feature
+    lighting.fs
+    lighting.vs
+```
+
+**Anti-pattern: Type-based separation**
+```
+src/
+  systems/lighting.zig  # Lighting logic here...
+resources/
+  shaders/lighting.fs   # ...but shaders way over here
+```
+
+This principle applies to any self-contained feature that has multiple related files (code, shaders, assets, configs).
+
+### Reference Resources
+
+- **[Vertical Slice Architecture](https://www.jimmybogard.com/vertical-slice-architecture/)** (Jimmy Bogard)
+  > "Minimize coupling between slices, and maximize coupling inside a slice."
+
+- **[Game Programming Patterns - Component](https://gameprogrammingpatterns.com/component.html)** (Robert Nystrom)
+  > Demonstrates how decoupling domains allows a single entity to span multiple domains (Physics, Graphics) without monolithic inheritance, enabling modular file structures.
+
+- **[Organizing Code by Feature](https://codeopinion.com/organizing-code-by-feature-using-vertical-slices/)** (Derek Comartin)
+  > "Folders should represent the capabilities of your application, not technical implementation details."
 
 ## Code Style
 

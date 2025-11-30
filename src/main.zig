@@ -4,6 +4,7 @@ const rl = @import("raylib");
 const physics = @import("physics/mod.zig");
 const Scene = @import("scene/mod.zig").Scene;
 const Renderer = @import("scene/renderer.zig").Renderer;
+const lighting = @import("lighting/mod.zig");
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
@@ -34,13 +35,37 @@ pub fn main() !void {
     var physics_world = try physics.PhysicsWorld.create(allocator);
     defer physics_world.destroy();
 
-    // Scene setup - creates ground plane and initial objects
-    var scene = try Scene.init(allocator, &physics_world);
-    defer scene.deinit();
-
     // Renderer setup - creates meshes and materials for drawing
     var game_renderer = try Renderer.init();
     defer game_renderer.deinit();
+
+    // Lighting setup - created after renderer to use its shader
+    var lights = lighting.Lights.init(allocator, game_renderer.getShader());
+    defer lights.deinit();
+    lights.setAmbient(0.15, 0.15, 0.15);
+
+    // Add a sun light - warm directional light from above
+    _ = lights.addDirectional(
+        .{ 10.0, 20.0, 10.0 }, // Position (high up, to the side)
+        .{ 0.0, 0.0, 0.0 }, // Target (center of scene)
+        rl.Color.init(255, 250, 230, 255), // Warm white sunlight
+    );
+
+    // Add a point light that will orbit around the scene
+    const point_light_index = lights.addPoint(
+        .{ 8.0, 2.0, 0.0 }, // Starting position (will be animated)
+        rl.Color.init(150, 200, 255, 255), // Cool blue-white light
+    );
+
+    // Create orbiting light animation (owned by main, updated in game loop)
+    var orbiting_light = if (point_light_index) |idx|
+        lighting.OrbitingLight.init(idx)
+    else
+        null;
+
+    // Scene setup - creates ground plane and initial objects
+    var scene = try Scene.init(allocator, &physics_world);
+    defer scene.deinit();
 
     // Config - Keys
     // Prevent ESC from closing the game immediately (so we can use it to toggle mouse)
@@ -57,6 +82,11 @@ pub fn main() !void {
 
         // Sync entity positions from physics simulation
         scene.syncFromPhysics();
+
+        // Update orbiting light animation
+        if (orbiting_light) |*orbit| {
+            orbit.update(&lights, delta_time);
+        }
 
         // If we click inside the window, capture the mouse
         if (rl.isMouseButtonPressed(.left)) {
@@ -79,17 +109,21 @@ pub fn main() !void {
         rl.beginDrawing();
         defer rl.endDrawing();
 
-        // Clear the previous frame (Fixes ghosting/trails)
-        rl.clearBackground(rl.Color.white);
+        // Clear the previous frame (darker background for better contrast with lit objects)
+        rl.clearBackground(rl.Color.init(40, 44, 52, 255)); // Dark gray-blue
+
+        // === Prepare Lighting for GPU ==============================================
+        // Send camera position and light data to shader
+        game_renderer.prepareLighting(&lights, camera);
 
         // === Draw 3D Things =======================================================
         rl.beginMode3D(camera);
-        game_renderer.draw(&scene);
+        game_renderer.draw(&scene, &lights);
         rl.endMode3D();
 
         // === Draw 2D Things =======================================================
         rl.drawFPS(10, 10);
-        rl.drawText(if (mouse_captured) "Mouse: CAPTURED" else "Mouse: FREE", 10, 30, 20, rl.Color.black);
+        rl.drawText(if (mouse_captured) "Mouse: CAPTURED" else "Mouse: FREE", 10, 30, 20, rl.Color.white);
     }
 }
 

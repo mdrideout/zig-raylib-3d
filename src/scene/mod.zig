@@ -2,6 +2,8 @@
 //!
 //! The scene owns SoA storage for each entity type and handles
 //! lifecycle (init/deinit) and physics sync.
+//!
+//! Animation has moved to the lighting module (src/lighting/animation.zig).
 
 const std = @import("std");
 const zphy = @import("zphysics");
@@ -30,7 +32,9 @@ pub const Scene = struct {
         // Spawn initial cubes with random rotations
         try scene.cubes.spawnDefault(.{ 0, 5, 0 });
         try scene.cubes.spawnRandom(.{ 0.5, 8, 0.2 });
+        try scene.cubes.spawnDefault(.{ 0, 10, 0 });
         try scene.cubes.spawnRandom(.{ -0.3, 11, -0.1 });
+        try scene.cubes.spawnRandom(.{ -0.3, 16, -0.1 });
 
         return scene;
     }
