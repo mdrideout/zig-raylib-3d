@@ -7,11 +7,11 @@ const Renderer = @import("scene/renderer.zig").Renderer;
 const lighting = @import("lighting/mod.zig");
 const characters = @import("characters/mod.zig");
 const camera_mod = @import("camera/mod.zig");
+const debug = @import("debug/mod.zig");
 
-/// Game modes - determines how input is handled
-const GameState = enum {
-    menu, // Show mode selection, mouse free
-    free_camera, // Original behavior - WASD moves camera
+/// Game modes - determines how camera/movement input is handled
+const GameMode = enum {
+    free_camera, // WASD moves camera, mouse controls look
     player_control, // WASD moves player, camera follows
 };
 
@@ -28,8 +28,15 @@ pub fn main() !void {
     rl.initWindow(800, 600, "My Zig Game");
     defer rl.closeWindow();
 
+    // Debug UI setup - must be after window init, before other systems
+    // Press F3 to toggle debug overlay
+    var debug_ui = try debug.Debug.init(allocator);
+    defer debug_ui.deinit();
+
     // Lock the game to 60 frames per second so it doesn't melt your CPU
-    rl.setTargetFPS(60);
+    // NOTE: If mouse clicks feel laggy, try increasing this or setting to 0 (unlimited)
+    // This is a known Raylib issue on macOS: https://github.com/raysan5/raylib/issues/4749
+    rl.setTargetFPS(120);
 
     // Camera setup - uses camera module for mode switching
     var camera = camera_mod.Camera.init();
@@ -71,57 +78,57 @@ pub fn main() !void {
     defer scene.deinit();
 
     // Config - Keys
-    // Prevent ESC from closing the game immediately (so we can use it to toggle mouse)
+    // Prevent ESC from closing the game immediately (so we can use it to free mouse)
     rl.setExitKey(.null);
 
-    // Game state - start in menu
-    var game_state: GameState = .menu;
+    // Game state - start in free camera mode with cursor enabled for initial debug access
+    var game_mode: GameMode = .free_camera;
     var entities_spawned: bool = false;
+    var cursor_captured: bool = false; // Whether mouse is captured for camera control
 
     // === RENDER LOOP ===============================================================
     while (!rl.windowShouldClose()) {
         // === Update Phase (Calculate physics, move camera, read inputs) ============
         const delta_time = rl.getFrameTime();
 
-        // === State-based Input Handling ===
-        switch (game_state) {
-            .menu => {
-                // Menu input - select mode with keyboard 1 or 2
-                if (rl.isKeyPressed(.one)) {
-                    if (!entities_spawned) {
-                        try scene.spawnEntities();
-                        entities_spawned = true;
-                    }
-                    game_state = .free_camera;
-                    rl.disableCursor();
-                }
-                if (rl.isKeyPressed(.two)) {
-                    if (!entities_spawned) {
-                        try scene.spawnEntities();
-                        entities_spawned = true;
-                    }
-                    game_state = .player_control;
-                    rl.disableCursor();
-                }
-            },
-            .free_camera => {
-                // ESC returns to menu
-                if (rl.isKeyPressed(.escape)) {
-                    game_state = .menu;
-                    rl.enableCursor();
-                } else {
-                    // Free camera mode - use raylib's built-in free camera
+        // === Global Input Handling ===
+        // ESC frees the mouse for debug UI interaction
+        if (rl.isKeyPressed(.escape)) {
+            cursor_captured = false;
+            rl.enableCursor();
+        }
+
+        // 1 key: Switch to free camera mode
+        if (rl.isKeyPressed(.one)) {
+            if (!entities_spawned) {
+                try scene.spawnEntities();
+                entities_spawned = true;
+            }
+            game_mode = .free_camera;
+            cursor_captured = true;
+            rl.disableCursor();
+        }
+
+        // 2 key: Switch to player control mode
+        if (rl.isKeyPressed(.two)) {
+            if (!entities_spawned) {
+                try scene.spawnEntities();
+                entities_spawned = true;
+            }
+            game_mode = .player_control;
+            cursor_captured = true;
+            rl.disableCursor();
+        }
+
+        // === Mode-based Camera/Movement Update ===
+        // Only update camera when cursor is captured
+        if (cursor_captured) {
+            switch (game_mode) {
+                .free_camera => {
                     camera.mode = .free;
                     camera.update(null);
-                }
-            },
-            .player_control => {
-                // ESC returns to menu
-                if (rl.isKeyPressed(.escape)) {
-                    game_state = .menu;
-                    rl.enableCursor();
-                } else {
-                    // Orbit camera mode - mouse controls camera orbit
+                },
+                .player_control => {
                     camera.mode = .orbit;
 
                     // Get player position for camera target
@@ -135,8 +142,8 @@ pub fn main() !void {
                     // Camera-relative movement using yaw angle
                     const input_dir = characters.movement.getInputDirectionFromYaw(camera.getYaw());
                     characters.controller.updatePlayer(&scene.characters, input_dir, camera.getYaw(), delta_time);
-                }
-            },
+                },
+            }
         }
 
         // Step physics simulation
@@ -154,6 +161,10 @@ pub fn main() !void {
         rl.beginDrawing();
         defer rl.endDrawing();
 
+        // Debug UI frame management (F3 toggles visibility)
+        debug_ui.beginFrame();
+        defer debug_ui.endFrame();
+
         // Clear the previous frame (darker background for better contrast with lit objects)
         rl.clearBackground(rl.Color.init(40, 44, 52, 255)); // Dark gray-blue
 
@@ -169,34 +180,23 @@ pub fn main() !void {
         // === Draw 2D Things =======================================================
         rl.drawFPS(10, 10);
 
-        // Draw menu overlay or mode indicator
-        switch (game_state) {
-            .menu => drawMenu(),
-            .free_camera => rl.drawText("Mode: FREE CAMERA (ESC for menu)", 10, 30, 20, rl.Color.white),
-            .player_control => rl.drawText("Mode: PLAYER CONTROL (ESC for menu)", 10, 30, 20, rl.Color.white),
-        }
+        // Always show minimal help text (non-blocking)
+        const help_y: i32 = 30;
+        const mode_indicator = if (game_mode == .free_camera) ">" else " ";
+        const mode_indicator2 = if (game_mode == .player_control) ">" else " ";
+
+        rl.drawText("[1] Free Camera", 10, help_y, 16, if (game_mode == .free_camera) rl.Color.green else rl.Color.gray);
+        rl.drawText(mode_indicator, 2, help_y, 16, rl.Color.green);
+
+        rl.drawText("[2] Player Control", 10, help_y + 18, 16, if (game_mode == .player_control) rl.Color.green else rl.Color.gray);
+        rl.drawText(mode_indicator2, 2, help_y + 18, 16, rl.Color.green);
+
+        rl.drawText("[Esc] Use Mouse", 10, help_y + 36, 16, if (!cursor_captured) rl.Color.yellow else rl.Color.gray);
+        rl.drawText("[F3] Debug UI", 10, help_y + 54, 16, rl.Color.gray);
+
+        // Draw debug UI last (on top of everything)
+        debug_ui.draw();
     }
-}
-
-/// Draw the mode selection menu with semi-transparent overlay.
-fn drawMenu() void {
-    const screen_width = rl.getScreenWidth();
-    const screen_height = rl.getScreenHeight();
-
-    // Semi-transparent overlay over 3D scene
-    rl.drawRectangle(0, 0, screen_width, screen_height, rl.Color.init(0, 0, 0, 180));
-
-    // Title
-    const title = "SELECT MODE";
-    const title_width = rl.measureText(title, 40);
-    rl.drawText(title, @divFloor(screen_width - title_width, 2), 150, 40, rl.Color.white);
-
-    // Options - clarify these are keyboard keys
-    rl.drawText("Press 1: Free Camera - Fly around freely", 100, 250, 24, rl.Color.green);
-    rl.drawText("Press 2: Player Control - Move the character", 100, 290, 24, rl.Color.green);
-
-    // Instructions
-    rl.drawText("Press ESC anytime to return to this menu", 100, 400, 18, rl.Color.gray);
 }
 
 test "simple test" {

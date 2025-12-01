@@ -109,6 +109,47 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("zphysics", zphysics.module("root"));
     exe.linkLibrary(zphysics.artifact("joltc"));
 
+    // === Debug UI (zgui + rlImGui) ==========================================
+    // Build option: -Dwith_debug=false to exclude debug UI from release builds
+    const with_debug = b.option(bool, "with_debug", "Include debug UI (default: true)") orelse true;
+
+    if (with_debug) {
+        // zgui provides Zig bindings for Dear ImGui
+        // We use no_backend because rlImGui provides the Raylib rendering backend
+        const zgui_dep = b.dependency("zgui", .{
+            .target = target,
+            .optimize = optimize,
+            .backend = .no_backend,
+        });
+        exe.root_module.addImport("zgui", zgui_dep.module("root"));
+        exe.linkLibrary(zgui_dep.artifact("imgui"));
+
+        // rlImGui bridges Dear ImGui to Raylib's rendering system
+        const rlimgui_dep = b.dependency("rlImGui", .{});
+
+        // Compile rlImGui.cpp against zgui's bundled imgui headers
+        // This ensures version compatibility between zgui and rlImGui
+        exe.addCSourceFile(.{
+            .file = rlimgui_dep.path("rlImGui.cpp"),
+            .flags = &.{
+                "-std=c++11",
+                "-fno-exceptions",
+                "-DNO_FONT_AWESOME", // Skip Font Awesome to simplify build
+            },
+        });
+
+        // Include paths for C++ compilation (rlImGui.cpp needs these)
+        exe.addIncludePath(zgui_dep.path("libs/imgui")); // imgui.h
+        exe.addIncludePath(rlimgui_dep.path(".")); // rlImGui.h
+
+        // Include paths for Zig's @cImport in backend.zig
+        exe.root_module.addIncludePath(zgui_dep.path("libs/imgui"));
+        exe.root_module.addIncludePath(rlimgui_dep.path("."));
+
+        // Link C++ standard library for rlImGui
+        exe.linkLibCpp();
+    }
+
     // =============================================================================
 
     // This declares intent for the executable to be installed into the

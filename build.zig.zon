@@ -40,6 +40,15 @@
             .url = "git+https://github.com/zig-gamedev/zphysics#87dbfd003e31623cede1137aa8a70f86619b5d5b",
             .hash = "zphysics-0.2.0-dev-nZDEAOXUQgCrjn_iSZke7zpWwqRUe_BRlrzRrDdXXPEz",
         },
+        .zgui = .{
+            .url = "git+https://github.com/zig-gamedev/zgui?ref=main#7d3fb3302b90bf71dbc93eb02bb208e6f37d555b",
+            .hash = "zgui-0.6.0-dev--L6sZBHybQAZLl719GjSlogZC3MhuGRf4wI48tjbnW3z",
+        },
+        // rlImGui bridges Dear ImGui rendering to Raylib
+        .rlImGui = .{
+            .url = "git+https://github.com/raylib-extras/rlImGui#main",
+            .hash = "N-V-__8AAC-taQCKZ-3IjRuWJ-5Dc47QKHDPEmqlwXhvjBGq",
+        },
     },
     .paths = .{
         "build.zig",
