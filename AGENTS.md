@@ -357,6 +357,79 @@ Migrate to ECS (e.g., `zig-ecs`) when:
 
 
 
+## Debug UI Architecture (zgui + rlImGui)
+
+The debug overlay uses **Dear ImGui** via a dual-library approach that separates concerns:
+
+### The Problem
+
+Dear ImGui needs two things:
+1. **Widget API** - Functions to create buttons, sliders, text, windows, etc.
+2. **Rendering Backend** - Code to convert ImGui's draw commands to GPU calls
+
+**zgui** provides excellent Zig bindings for the widget API, but doesn't include a Raylib backend.
+**rlImGui** is a C++ library that provides the Raylib backend, but has a C-style API.
+
+### The Solution: Shared Context
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     ImGui Context (owned by rlImGui)            │
+├─────────────────────────────────────────────────────────────────┤
+│  rlImGui (C++)                 │  zgui (Zig)                    │
+│  - Creates context             │  - Uses existing context       │
+│  - Raylib input forwarding     │  - Idiomatic Zig widget API    │
+│  - Raylib rendering backend    │  - Type-safe, comptime checks  │
+│  - rlImGuiBegin/End lifecycle  │  - zgui.button(), .slider()    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+The key insight is that ImGui uses a **global context** internally. We exploit this:
+
+1. **rlImGui creates the context** via `rlImGuiSetup()`
+2. **zgui attaches to it** via `zgui.initNoContext()` (doesn't create a new one)
+3. Both libraries now operate on the **same** ImGui context
+
+### Build Integration
+
+In `build.zig`, we compile `rlImGui.cpp` against zgui's bundled ImGui headers:
+
+```zig
+// rlImGui.cpp compiled with zgui's imgui headers for version compatibility
+exe.addCSourceFile(.{ .file = rlimgui_dep.path("rlImGui.cpp"), ... });
+exe.addIncludePath(zgui_dep.path("libs/imgui"));  // imgui.h from zgui
+```
+
+This ensures both libraries use the **exact same ImGui version**, preventing ABI mismatches.
+
+### Frame Lifecycle
+
+```
+main.zig loop:
+  rl.beginDrawing()
+    debug_ui.beginFrame()     →  backend.begin()     →  rlImGuiBegin()   [starts ImGui frame]
+      zgui.button("Test")     →  [widget calls go to shared context]
+    debug_ui.draw()           →  [draws panels using zgui API]
+    debug_ui.endFrame()       →  backend.endFrame()  →  rlImGuiEnd()     [renders via Raylib]
+  rl.endDrawing()
+```
+
+### Module Structure
+
+```
+src/debug/
+  mod.zig           # Debug struct - lifecycle, F3 toggle, visibility
+  backend.zig       # @cImport wrapper for rlImGui C functions
+  panels.zig        # Type-erased panel registry (game-agnostic)
+  builtin_panels.zig # Performance, Click Log, ImGui Demo panels
+```
+
+### Input Forwarding Fix
+
+rlImGui polls input state once per frame in `rlImGuiBegin()`. Fast clicks can be missed.
+We fix this by **latching** mouse events early in the frame (in `input.collectInput()`), then
+forwarding them to ImGui via `zgui.io.addMouseButtonEvent()` before `rlImGuiBegin()`.
+
 ## Reference Resources
 
 - **[Vertical Slice Architecture](https://www.jimmybogard.com/vertical-slice-architecture/)** (Jimmy Bogard)

@@ -292,19 +292,36 @@ pub fn main() !void {
         // === Draw 2D HUD =======================================================
         rl.drawFPS(10, 10);
 
-        // Help text
-        const help_y: i32 = 30;
+        // Help text panel - smaller font with transparent background
+        const help_x: i32 = 6;
+        const help_y: i32 = 36;
+        const font_size: i32 = 10;
+        const line_height: i32 = 12;
+        const padding: i32 = 4;
+        const panel_width: i32 = 124;
+        const panel_height: i32 = line_height * 4 + padding * 2;
+
+        // Semi-transparent dark background for readability
+        rl.drawRectangle(
+            help_x - padding,
+            help_y - padding,
+            panel_width,
+            panel_height,
+            rl.Color.init(0, 0, 0, 160), // RGBA: black at ~63% opacity
+        );
+
+        // Mode indicators and labels
         const mode_indicator = if (game_mode == .free_camera) ">" else " ";
         const mode_indicator2 = if (game_mode == .player_control) ">" else " ";
 
-        rl.drawText("[1] Free Camera", 10, help_y, 16, if (game_mode == .free_camera) rl.Color.green else rl.Color.gray);
-        rl.drawText(mode_indicator, 2, help_y, 16, rl.Color.green);
+        rl.drawText(mode_indicator, help_x, help_y, font_size, rl.Color.green);
+        rl.drawText("[1] Free Camera", help_x + 8, help_y, font_size, if (game_mode == .free_camera) rl.Color.green else rl.Color.gray);
 
-        rl.drawText("[2] Player Control", 10, help_y + 18, 16, if (game_mode == .player_control) rl.Color.green else rl.Color.gray);
-        rl.drawText(mode_indicator2, 2, help_y + 18, 16, rl.Color.green);
+        rl.drawText(mode_indicator2, help_x, help_y + line_height, font_size, rl.Color.green);
+        rl.drawText("[2] Player Control", help_x + 8, help_y + line_height, font_size, if (game_mode == .player_control) rl.Color.green else rl.Color.gray);
 
-        rl.drawText("[Esc] Use Mouse", 10, help_y + 36, 16, if (!cursor_captured) rl.Color.yellow else rl.Color.gray);
-        rl.drawText("[F3] Debug UI", 10, help_y + 54, 16, rl.Color.gray);
+        rl.drawText("[Esc] Release Mouse", help_x + 8, help_y + line_height * 2, font_size, if (!cursor_captured) rl.Color.yellow else rl.Color.gray);
+        rl.drawText("[F3] Debug UI", help_x + 8, help_y + line_height * 3, font_size, rl.Color.gray);
 
         // Draw debug UI last (on top of everything)
         debug_ui.draw();
