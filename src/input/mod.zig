@@ -113,6 +113,24 @@ pub const InputActions = struct {
     toggle_debug: bool = false,
 
     // =========================================================================
+    // Mouse Buttons (Latched for ImGui reliability)
+    // These ensure mouse clicks are never missed due to timing issues.
+    // rlImGui uses single-frame detection which can miss fast clicks.
+    // =========================================================================
+
+    /// Left mouse button pressed this frame (latched).
+    mouse_left_pressed: bool = false,
+
+    /// Left mouse button released this frame (latched).
+    mouse_left_released: bool = false,
+
+    /// Right mouse button pressed this frame (latched).
+    mouse_right_pressed: bool = false,
+
+    /// Right mouse button released this frame (latched).
+    mouse_right_released: bool = false,
+
+    // =========================================================================
     // Methods
     // =========================================================================
 
@@ -141,6 +159,17 @@ pub const InputActions = struct {
         self.toggle_player_mode = false;
         self.release_cursor = false;
         self.toggle_debug = false;
+    }
+
+    /// Reset mouse button events after they've been forwarded to ImGui.
+    ///
+    /// Call this once per frame after the debug UI has processed input.
+    /// This ensures mouse events don't persist across frames.
+    pub fn consumeMouseInputs(self: *InputActions) void {
+        self.mouse_left_pressed = false;
+        self.mouse_left_released = false;
+        self.mouse_right_pressed = false;
+        self.mouse_right_released = false;
     }
 
     /// Get the movement direction as a normalized 3D vector.
@@ -224,6 +253,17 @@ pub fn collectInput(current: *InputActions) void {
     const mouse_delta = rl.getMouseDelta();
     current.look_delta_x = mouse_delta.x;
     current.look_delta_y = mouse_delta.y;
+
+    // =========================================================================
+    // MOUSE BUTTONS (Latched for ImGui reliability)
+    // rlImGui uses single-frame detection which can miss fast clicks.
+    // We latch mouse events early in the frame so ImGui always sees them.
+    // =========================================================================
+
+    if (rl.isMouseButtonPressed(.left)) current.mouse_left_pressed = true;
+    if (rl.isMouseButtonReleased(.left)) current.mouse_left_released = true;
+    if (rl.isMouseButtonPressed(.right)) current.mouse_right_pressed = true;
+    if (rl.isMouseButtonReleased(.right)) current.mouse_right_released = true;
 }
 
 /// Compute camera-relative movement direction from input.

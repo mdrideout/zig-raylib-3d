@@ -35,6 +35,7 @@
 const std = @import("std");
 const zgui = @import("zgui");
 const rl = @import("raylib");
+const input = @import("../input/mod.zig");
 
 pub const backend = @import("backend.zig");
 pub const panels = @import("panels.zig");
@@ -90,8 +91,11 @@ pub const Debug = struct {
 
     /// Begin a debug frame.
     /// Call AFTER rl.beginDrawing().
-    /// Handles F3 toggle and starts ImGui frame if visible.
-    pub fn beginFrame(self: *Debug) void {
+    /// Handles F3 toggle, forwards latched mouse events, and starts ImGui frame if visible.
+    ///
+    /// The input_buffer parameter contains latched mouse events collected early in the frame.
+    /// We forward these to ImGui BEFORE rlImGuiBegin() to ensure fast clicks aren't missed.
+    pub fn beginFrame(self: *Debug, input_buffer: *const input.InputActions) void {
         // Toggle debug overlay with F3
         if (rl.isKeyPressed(.f3)) {
             self.visible = !self.visible;
@@ -99,6 +103,22 @@ pub const Debug = struct {
 
         // Only start ImGui frame if visible
         if (self.visible) {
+            // Forward latched mouse events BEFORE rlImGuiBegin()
+            // This ensures ImGui sees clicks that happened earlier in the frame.
+            // Without this, fast clicks can be missed because rlImGui uses single-frame detection.
+            if (input_buffer.mouse_left_pressed) {
+                zgui.io.addMouseButtonEvent(.left, true);
+            }
+            if (input_buffer.mouse_left_released) {
+                zgui.io.addMouseButtonEvent(.left, false);
+            }
+            if (input_buffer.mouse_right_pressed) {
+                zgui.io.addMouseButtonEvent(.right, true);
+            }
+            if (input_buffer.mouse_right_released) {
+                zgui.io.addMouseButtonEvent(.right, false);
+            }
+
             backend.begin();
         }
     }

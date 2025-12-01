@@ -241,8 +241,13 @@ pub fn main() !void {
         defer rl.endDrawing();
 
         // Debug UI frame management (F3 toggles visibility internally)
-        debug_ui.beginFrame();
-        defer debug_ui.endFrame();
+        // Pass input_buffer so latched mouse events are forwarded to ImGui
+        debug_ui.beginFrame(&input_buffer);
+        defer {
+            debug_ui.endFrame();
+            // Consume mouse inputs after ImGui has processed them
+            input_buffer.consumeMouseInputs();
+        }
 
         // Clear the previous frame (darker background for better contrast with lit objects)
         rl.clearBackground(rl.Color.init(40, 44, 52, 255)); // Dark gray-blue
