@@ -116,6 +116,10 @@ pub fn main() !void {
     var game_clock = time.GameClock{};
     var input_buffer = input.InputActions{};
 
+    // Click feedback gizmo state (for debugging input registration)
+    var click_feedback_pos: ?[2]f32 = null;
+    var click_feedback_time: f64 = 0;
+
     // === RENDER LOOP ===============================================================
     while (!rl.windowShouldClose()) {
         // =========================================================================
@@ -128,6 +132,13 @@ pub fn main() !void {
 
         // Collect input - latches triggers, updates continuous inputs
         input.collectInput(&input_buffer);
+
+        // Update click feedback gizmo (for debugging - shows when clicks are registered)
+        if (input_buffer.mouse_left_pressed or input_buffer.mouse_right_pressed) {
+            const pos = rl.getMousePosition();
+            click_feedback_pos = .{ pos.x, pos.y };
+            click_feedback_time = rl.getTime();
+        }
 
         // =========================================================================
         // HANDLE MODE SWITCHES (once per frame, not per physics tick)
@@ -260,6 +271,23 @@ pub fn main() !void {
         rl.beginMode3D(camera.rl_camera);
         game_renderer.draw(&scene, &lights);
         rl.endMode3D();
+
+        // === Click feedback gizmo (debug - shows expanding circle on click) ===
+        if (click_feedback_pos) |pos| {
+            const click_age: f32 = @floatCast(rl.getTime() - click_feedback_time);
+            if (click_age < 0.5) {
+                const click_alpha: u8 = @intFromFloat((1.0 - click_age * 2.0) * 255.0);
+                const radius: f32 = 10.0 + click_age * 60.0;
+                rl.drawCircleLines(
+                    @intFromFloat(pos[0]),
+                    @intFromFloat(pos[1]),
+                    radius,
+                    rl.Color.init(0, 255, 0, click_alpha),
+                );
+            } else {
+                click_feedback_pos = null;
+            }
+        }
 
         // === Draw 2D HUD =======================================================
         rl.drawFPS(10, 10);
