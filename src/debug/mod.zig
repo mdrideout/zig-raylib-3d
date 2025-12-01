@@ -101,6 +101,16 @@ pub const Debug = struct {
             self.visible = !self.visible;
         }
 
+        // Record clicks for debug logging (always, even when UI hidden)
+        if (input_buffer.mouse_left_pressed) {
+            const pos = rl.getMousePosition();
+            builtin_panels.recordClick(pos.x, pos.y, true);
+        }
+        if (input_buffer.mouse_right_pressed) {
+            const pos = rl.getMousePosition();
+            builtin_panels.recordClick(pos.x, pos.y, false);
+        }
+
         // Only start ImGui frame if visible
         if (self.visible) {
             // Forward latched mouse events BEFORE rlImGuiBegin()
