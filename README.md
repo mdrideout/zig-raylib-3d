@@ -1,6 +1,8 @@
 # Zig 3D Game Engine Example
 
-A super light and basic 3D game engine built with Zig, Raylib, and Jolt Physics.
+A super light and basic 3D game engine built with Zig, Raylib, and Jolt Physics. 
+
+This repo is meant to demonstrate the basics of tool programming and gizmos needed to build a 3D game scene with a camera, lighting, shadows, physics, basic character controls, and most importantly, **a debug menu**.
 
 Opinionated organization and architecture:
 
