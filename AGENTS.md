@@ -152,6 +152,39 @@ Ensure you check what we get for free in these libraries, especially raylib, bef
 
 This is a Zig + Raylib + Jolt Physics based 3d game. Consider what is conventional in _modern_ game development, zig, and raylib specifically.
 
+### The Canonical Game Loop (Fixed Timestep with Interpolation)
+
+This engine implements the industry-standard three-phase game loop pattern used by Unity (`FixedUpdate`), Unreal Engine (Physics Ticking), and Godot (`_physics_process`).
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Phase 1: INPUT PUMP (Per-Frame / Uncapped)                  │
+│ - Drains OS events, latches actions to the Input Buffer.    │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 2: SIMULATION TICK (Fixed 120Hz)                      │
+│ - The "Authority." Runs physics, gameplay logic, & consume. │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 3: PRESENTATION (Interpolated)                        │
+│ - Renders the "Visual State" blended between two ticks.     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why this matters:**
+- **Phase 1** ensures no inputs are ever lost (latching pattern)
+- **Phase 2** guarantees deterministic physics regardless of frame rate
+- **Phase 3** provides smooth visuals even when tick rate ≠ render rate
+
+**Key modules:**
+- `src/time/mod.zig` - `GameClock` with accumulator, interpolation helpers
+- `src/input/mod.zig` - `InputActions` with semantic action mapping and latching
+
+**Critical implementation details:**
+- Camera must use **interpolated** player position (prevents "vibrating player" bug)
+- Entities store `prev_position`/`prev_rotation` for interpolation
+- Call `resetInterpolation()` after teleports to prevent speed glitches
+
+See [INPUT_SYSTEM_PLAN.md](INPUT_SYSTEM_PLAN.md) for complete architectural documentation.
+
 ## Project Structure
 
 ```

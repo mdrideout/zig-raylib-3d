@@ -9,15 +9,21 @@ const std = @import("std");
 const zphy = @import("zphysics");
 const physics = @import("../physics/mod.zig");
 const math = @import("../math.zig");
+const time = @import("../time/mod.zig");
 
 /// Cube size (full size, not half-extents)
 pub const SIZE: f32 = 1.0;
 
 /// Data for a single cube instance.
 /// MultiArrayList stores these as separate arrays (SoA) automatically.
+///
+/// Includes prev_position and prev_rotation for render interpolation.
+/// The renderer blends between prev and current based on accumulator alpha.
 const CubeData = struct {
     position: [3]f32,
     rotation: [4]f32, // quaternion (x, y, z, w)
+    prev_position: [3]f32, // Previous frame position (for interpolation)
+    prev_rotation: [4]f32, // Previous frame rotation (for interpolation)
     body_id: zphy.BodyId,
 };
 
@@ -50,6 +56,9 @@ pub const Cubes = struct {
         try self.data.append(self.allocator, .{
             .position = position,
             .rotation = rotation,
+            // Initialize prev = current to prevent interpolation glitch on first frame
+            .prev_position = position,
+            .prev_rotation = rotation,
             .body_id = body_id,
         });
     }
@@ -97,6 +106,53 @@ pub const Cubes = struct {
             .positions = slice.items(.position),
             .rotations = slice.items(.rotation),
         };
+    }
+
+    // =========================================================================
+    // Interpolation Support
+    // =========================================================================
+
+    /// Store current state as previous state.
+    /// Call this BEFORE each fixed timestep physics update.
+    /// This captures the "before" snapshot for render interpolation.
+    pub fn storePreviousState(self: *Cubes) void {
+        const slice = self.data.slice();
+        const positions = slice.items(.position);
+        const rotations = slice.items(.rotation);
+        const prev_positions = slice.items(.prev_position);
+        const prev_rotations = slice.items(.prev_rotation);
+
+        for (positions, rotations, prev_positions, prev_rotations) |pos, rot, *prev_pos, *prev_rot| {
+            prev_pos.* = pos;
+            prev_rot.* = rot;
+        }
+    }
+
+    /// Get interpolated position for a specific cube.
+    /// alpha: 0.0 = previous state, 1.0 = current state
+    pub fn getInterpolatedPosition(self: *const Cubes, index: usize, alpha: f32) [3]f32 {
+        const slice = self.data.slice();
+        const prev = slice.items(.prev_position)[index];
+        const curr = slice.items(.position)[index];
+        return time.lerpVec3(prev, curr, alpha);
+    }
+
+    /// Get interpolated rotation for a specific cube.
+    /// alpha: 0.0 = previous state, 1.0 = current state
+    pub fn getInterpolatedRotation(self: *const Cubes, index: usize, alpha: f32) [4]f32 {
+        const slice = self.data.slice();
+        const prev = slice.items(.prev_rotation)[index];
+        const curr = slice.items(.rotation)[index];
+        return time.slerpQuat(prev, curr, alpha);
+    }
+
+    /// Reset interpolation for a cube after teleport.
+    /// Sets prev = current so there's no interpolation on next frame.
+    /// Call this after any discontinuous position change (teleport, respawn).
+    pub fn resetInterpolation(self: *Cubes, index: usize) void {
+        const slice = self.data.slice();
+        slice.items(.prev_position)[index] = slice.items(.position)[index];
+        slice.items(.prev_rotation)[index] = slice.items(.rotation)[index];
     }
 };
 

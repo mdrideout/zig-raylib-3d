@@ -9,6 +9,7 @@
 const std = @import("std");
 const zphy = @import("zphysics");
 const physics = @import("../physics/mod.zig");
+const time = @import("../time/mod.zig");
 
 /// Character physics dimensions (in meters).
 pub const CAPSULE_RADIUS: f32 = 0.3;
@@ -70,9 +71,14 @@ const npc_parts = [_]BodyPart{
 
 /// Data for a single character instance.
 /// MultiArrayList stores these as separate arrays (SoA) automatically.
+///
+/// Includes prev_position and prev_rotation for render interpolation.
+/// The renderer blends between prev and current based on accumulator alpha.
 const CharacterData = struct {
     position: [3]f32,
     rotation: [4]f32, // quaternion (x, y, z, w) - facing direction
+    prev_position: [3]f32, // Previous frame position (for interpolation)
+    prev_rotation: [4]f32, // Previous frame rotation (for interpolation)
     body_id: zphy.BodyId,
     character_type: CharacterType,
     is_grounded: bool,
@@ -107,10 +113,14 @@ pub const Characters = struct {
     pub fn spawn(self: *Characters, position: [3]f32, char_type: CharacterType) !usize {
         const body_id = try spawnBody(self.physics_system, position);
         const index = self.data.len;
+        const identity_rot = [4]f32{ 0, 0, 0, 1 };
 
         try self.data.append(self.allocator, .{
             .position = position,
-            .rotation = .{ 0, 0, 0, 1 }, // Identity quaternion (facing +Z)
+            .rotation = identity_rot, // Identity quaternion (facing +Z)
+            // Initialize prev = current to prevent interpolation glitch on first frame
+            .prev_position = position,
+            .prev_rotation = identity_rot,
             .body_id = body_id,
             .character_type = char_type,
             .is_grounded = false,
@@ -198,6 +208,53 @@ pub const Characters = struct {
     /// Get facing rotation for a character.
     pub fn getRotation(self: *const Characters, index: usize) [4]f32 {
         return self.data.items(.rotation)[index];
+    }
+
+    // =========================================================================
+    // Interpolation Support
+    // =========================================================================
+
+    /// Store current state as previous state.
+    /// Call this BEFORE each fixed timestep physics update.
+    /// This captures the "before" snapshot for render interpolation.
+    pub fn storePreviousState(self: *Characters) void {
+        const slice = self.data.slice();
+        const positions = slice.items(.position);
+        const rotations = slice.items(.rotation);
+        const prev_positions = slice.items(.prev_position);
+        const prev_rotations = slice.items(.prev_rotation);
+
+        for (positions, rotations, prev_positions, prev_rotations) |pos, rot, *prev_pos, *prev_rot| {
+            prev_pos.* = pos;
+            prev_rot.* = rot;
+        }
+    }
+
+    /// Get interpolated position for a specific character.
+    /// alpha: 0.0 = previous state, 1.0 = current state
+    pub fn getInterpolatedPosition(self: *const Characters, index: usize, alpha: f32) [3]f32 {
+        const slice = self.data.slice();
+        const prev = slice.items(.prev_position)[index];
+        const curr = slice.items(.position)[index];
+        return time.lerpVec3(prev, curr, alpha);
+    }
+
+    /// Get interpolated rotation for a specific character.
+    /// alpha: 0.0 = previous state, 1.0 = current state
+    pub fn getInterpolatedRotation(self: *const Characters, index: usize, alpha: f32) [4]f32 {
+        const slice = self.data.slice();
+        const prev = slice.items(.prev_rotation)[index];
+        const curr = slice.items(.rotation)[index];
+        return time.slerpQuat(prev, curr, alpha);
+    }
+
+    /// Reset interpolation for a character after teleport.
+    /// Sets prev = current so there's no interpolation on next frame.
+    /// Call this after any discontinuous position change (teleport, respawn).
+    pub fn resetInterpolation(self: *Characters, index: usize) void {
+        const slice = self.data.slice();
+        slice.items(.prev_position)[index] = slice.items(.position)[index];
+        slice.items(.prev_rotation)[index] = slice.items(.rotation)[index];
     }
 };
 

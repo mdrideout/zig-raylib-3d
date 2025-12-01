@@ -59,4 +59,16 @@ pub const Scene = struct {
         self.cubes.syncFromPhysics();
         self.characters.syncFromPhysics();
     }
+
+    // =========================================================================
+    // Interpolation Support
+    // =========================================================================
+
+    /// Store current state as previous for all entities.
+    /// Call BEFORE each fixed timestep physics update.
+    /// This captures the "before" snapshot for render interpolation.
+    pub fn storePreviousState(self: *Scene) void {
+        self.cubes.storePreviousState();
+        self.characters.storePreviousState();
+    }
 };

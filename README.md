@@ -55,3 +55,27 @@ This project follows opinionated architectural patterns:
 - **Zig-idiomatic** - Explicit control, pure Zig libraries preferred, no hidden state
 
 [AGENTS.md](AGENTS.md) contains more details about the design decisions for vibe coding consistency.
+
+## Game Loop Architecture
+
+This engine implements **The Canonical Game Loop** (also known as "Fixed Timestep with Interpolation"), the same architecture used by Unity, Unreal Engine, and Godot.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Phase 1: INPUT PUMP (Per-Frame / Uncapped)                  │
+│ - Drains OS events, latches actions to the Input Buffer.    │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 2: SIMULATION TICK (Fixed 120Hz)                      │
+│ - The "Authority." Runs physics, gameplay logic, & consume. │
+├─────────────────────────────────────────────────────────────┤
+│ Phase 3: PRESENTATION (Interpolated)                        │
+│ - Renders the "Visual State" blended between two ticks.     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why this pattern?**
+- **Deterministic physics** - Same behavior at 30 FPS or 144 FPS
+- **No missed inputs** - Latching ensures every click/keypress is captured
+- **Smooth visuals** - Interpolation eliminates stutter between physics ticks
+
+See [INPUT_SYSTEM_PLAN.md](INPUT_SYSTEM_PLAN.md) for detailed implementation documentation.

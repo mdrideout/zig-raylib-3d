@@ -1,6 +1,29 @@
+//! Main entry point for the Zig 3D Game.
+//!
+//! Implements **The Canonical Game Loop** (Fixed Timestep with Interpolation).
+//! This is the same architecture used by Unity, Unreal, and Godot.
+//! See INPUT_SYSTEM_PLAN.md for detailed documentation.
+//!
+//! ## The Canonical Game Loop
+//!
+//! ```
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │ Phase 1: INPUT PUMP (Per-Frame / Uncapped)                  │
+//! │ - Drains OS events, latches actions to the Input Buffer.    │
+//! ├─────────────────────────────────────────────────────────────┤
+//! │ Phase 2: SIMULATION TICK (Fixed 120Hz)                      │
+//! │ - The "Authority." Runs physics, gameplay logic, & consume. │
+//! ├─────────────────────────────────────────────────────────────┤
+//! │ Phase 3: PRESENTATION (Interpolated)                        │
+//! │ - Renders the "Visual State" blended between two ticks.     │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
+
 const std = @import("std");
 const zig_3d_game = @import("zig_3d_game");
 const rl = @import("raylib");
+
+// Game systems
 const physics = @import("physics/mod.zig");
 const Scene = @import("scene/mod.zig").Scene;
 const Renderer = @import("scene/renderer.zig").Renderer;
@@ -8,6 +31,10 @@ const lighting = @import("lighting/mod.zig");
 const characters = @import("characters/mod.zig");
 const camera_mod = @import("camera/mod.zig");
 const debug = @import("debug/mod.zig");
+
+// New systems for fixed timestep
+const time = @import("time/mod.zig");
+const input = @import("input/mod.zig");
 
 /// Game modes - determines how camera/movement input is handled
 const GameMode = enum {
@@ -33,9 +60,8 @@ pub fn main() !void {
     var debug_ui = try debug.Debug.init(allocator);
     defer debug_ui.deinit();
 
-    // Lock the game to 60 frames per second so it doesn't melt your CPU
-    // NOTE: If mouse clicks feel laggy, try increasing this or setting to 0 (unlimited)
-    // This is a known Raylib issue on macOS: https://github.com/raysan5/raylib/issues/4749
+    // Raylib's internal frame limiter - caps render rate
+    // The fixed timestep handles physics determinism; this just prevents GPU meltdown
     rl.setTargetFPS(120);
 
     // Camera setup - uses camera module for mode switching
@@ -81,25 +107,41 @@ pub fn main() !void {
     // Prevent ESC from closing the game immediately (so we can use it to free mouse)
     rl.setExitKey(.null);
 
-    // Game state - start in free camera mode with cursor enabled for initial debug access
+    // Game state
     var game_mode: GameMode = .free_camera;
     var entities_spawned: bool = false;
     var cursor_captured: bool = false; // Whether mouse is captured for camera control
 
+    // === NEW: Fixed timestep and input systems ===
+    var game_clock = time.GameClock{};
+    var input_buffer = input.InputActions{};
+
     // === RENDER LOOP ===============================================================
     while (!rl.windowShouldClose()) {
-        // === Update Phase (Calculate physics, move camera, read inputs) ============
-        const delta_time = rl.getFrameTime();
+        // =========================================================================
+        // PHASE 1: INPUT PUMP (Per-Frame / Uncapped)
+        // Drains OS events, latches actions to the Input Buffer.
+        // =========================================================================
 
-        // === Global Input Handling ===
+        // Start the frame timer and add delta to accumulator
+        game_clock.beginFrame(rl.getFrameTime());
+
+        // Collect input - latches triggers, updates continuous inputs
+        input.collectInput(&input_buffer);
+
+        // =========================================================================
+        // HANDLE MODE SWITCHES (once per frame, not per physics tick)
+        // These are UI-layer inputs that shouldn't fire multiple times per frame
+        // =========================================================================
+
         // ESC frees the mouse for debug UI interaction
-        if (rl.isKeyPressed(.escape)) {
+        if (input_buffer.release_cursor) {
             cursor_captured = false;
             rl.enableCursor();
         }
 
         // 1 key: Switch to free camera mode
-        if (rl.isKeyPressed(.one)) {
+        if (input_buffer.toggle_free_camera) {
             if (!entities_spawned) {
                 try scene.spawnEntities();
                 entities_spawned = true;
@@ -110,7 +152,7 @@ pub fn main() !void {
         }
 
         // 2 key: Switch to player control mode
-        if (rl.isKeyPressed(.two)) {
+        if (input_buffer.toggle_player_mode) {
             if (!entities_spawned) {
                 try scene.spawnEntities();
                 entities_spawned = true;
@@ -120,8 +162,51 @@ pub fn main() !void {
             rl.disableCursor();
         }
 
-        // === Mode-based Camera/Movement Update ===
-        // Only update camera when cursor is captured
+        // Consume mode inputs after handling (prevents re-firing)
+        input_buffer.consumeModeInputs();
+
+        // =========================================================================
+        // PHASE 2: SIMULATION TICK (Fixed 120Hz)
+        // The "Authority." Runs physics, gameplay logic, & consumes triggers.
+        // =========================================================================
+
+        // This loop runs 0, 1, or more times depending on accumulated time.
+        // Each iteration uses FIXED_TIMESTEP for deterministic physics.
+        while (game_clock.shouldStepLogic()) {
+            const fixed_dt = time.GameClock.getFixedDeltaTime();
+
+            // Store previous state for interpolation (BEFORE physics update)
+            scene.storePreviousState();
+
+            // Character movement - only when cursor captured and in player mode
+            if (cursor_captured and game_mode == .player_control) {
+                // Compute camera-relative movement from input buffer
+                const move_dir = input.computeCameraRelativeMovement(&input_buffer, camera.getYaw());
+                characters.controller.updatePlayer(&scene.characters, move_dir, camera.getYaw(), fixed_dt);
+            }
+
+            // Physics step with FIXED timestep (deterministic!)
+            try physics_world.update(fixed_dt);
+
+            // Sync entity positions from physics simulation
+            scene.syncFromPhysics();
+
+            // Consume gameplay triggers after physics processes them
+            input_buffer.consumeTriggers();
+        }
+
+        // =========================================================================
+        // PHASE 3: PRESENTATION (Interpolated)
+        // Renders the "Visual State" blended between two ticks.
+        // =========================================================================
+
+        // Calculate interpolation alpha for smooth rendering
+        // alpha: 0.0 = previous physics state, 1.0 = current physics state
+        const alpha = game_clock.getInterpolationAlpha();
+
+        // Camera update - MUST use interpolated player position to avoid jitter!
+        // Without this, the camera would snap to the "future" physics state while
+        // the player mesh renders at the interpolated "past" position = vibrating.
         if (cursor_captured) {
             switch (game_mode) {
                 .free_camera => {
@@ -131,56 +216,50 @@ pub fn main() !void {
                 .player_control => {
                     camera.mode = .orbit;
 
-                    // Get player position for camera target
+                    // Get INTERPOLATED player position for camera target
+                    // This prevents the "camera jitter" bug where camera and mesh are out of sync
                     const player_pos: ?[3]f32 = if (scene.characters.getPlayerIndex()) |idx|
-                        scene.characters.data.items(.position)[idx]
+                        scene.characters.getInterpolatedPosition(idx, alpha)
                     else
                         null;
 
                     camera.update(player_pos);
-
-                    // Camera-relative movement using yaw angle
-                    const input_dir = characters.movement.getInputDirectionFromYaw(camera.getYaw());
-                    characters.controller.updatePlayer(&scene.characters, input_dir, camera.getYaw(), delta_time);
                 },
             }
         }
 
-        // Step physics simulation
-        try physics_world.update(delta_time);
-
-        // Sync entity positions from physics simulation
-        scene.syncFromPhysics();
-
-        // Update orbiting light animation
+        // Orbiting light is purely visual - use frame time, not fixed timestep
         if (orbiting_light) |*orbit| {
-            orbit.update(&lights, delta_time);
+            orbit.update(&lights, game_clock.getFrameTime());
         }
 
-        // === Begin Drawing =========================================================
+        // =========================================================================
+        // --- RENDER PASS (within Phase 3) ---
+        // =========================================================================
+
         rl.beginDrawing();
         defer rl.endDrawing();
 
-        // Debug UI frame management (F3 toggles visibility)
+        // Debug UI frame management (F3 toggles visibility internally)
         debug_ui.beginFrame();
         defer debug_ui.endFrame();
 
         // Clear the previous frame (darker background for better contrast with lit objects)
         rl.clearBackground(rl.Color.init(40, 44, 52, 255)); // Dark gray-blue
 
-        // === Prepare Lighting for GPU ==============================================
-        // Send camera position and light data to shader
+        // Prepare lighting for GPU (send camera position and light data to shader)
         game_renderer.prepareLighting(&lights, camera.rl_camera);
 
-        // === Draw 3D Things (always render scene) =================================
+        // Draw 3D scene
+        // TODO: Pass alpha for interpolated rendering
         rl.beginMode3D(camera.rl_camera);
         game_renderer.draw(&scene, &lights);
         rl.endMode3D();
 
-        // === Draw 2D Things =======================================================
+        // === Draw 2D HUD =======================================================
         rl.drawFPS(10, 10);
 
-        // Always show minimal help text (non-blocking)
+        // Help text
         const help_y: i32 = 30;
         const mode_indicator = if (game_mode == .free_camera) ">" else " ";
         const mode_indicator2 = if (game_mode == .player_control) ">" else " ";
@@ -209,10 +288,10 @@ test "simple test" {
 
 test "fuzz example" {
     const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
+        fn testOne(context: @This(), input_data: []const u8) anyerror!void {
             _ = context;
             // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
+            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input_data));
         }
     };
     try std.testing.fuzz(Context{}, Context.testOne, .{});
