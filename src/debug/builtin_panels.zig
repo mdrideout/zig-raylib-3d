@@ -27,9 +27,9 @@ fn drawPerformance(_: ?*anyopaque) void {
 
     // Frame time graph would go here with ImPlot
     // For now, just show target info
-    zgui.text("Target: 60 FPS ({d:.2} ms)", .{1000.0 / 60.0});
+    zgui.text("Target: 120 FPS ({d:.2} ms)", .{1000.0 / 120.0});
 
-    if (fps < 55) {
+    if (fps < 110) {
         zgui.textColored(.{ 1.0, 0.3, 0.3, 1.0 }, "Warning: Below target FPS", .{});
     }
 }
